@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,13 +15,17 @@ from .config import (
     SHOW_CONE, SHOW_LEGEND, SHOW_PORTS, SHOW_PORT_TABLE,
     SHOW_MOVEMENT_TABLE, SHOW_ACE_BOX, SHOW_MAX_WIND_BOXES,
     SHOW_FOOTER, SHOW_AI_POSITION, SHOW_BIAS_TRACK,
+    DATE_FORMAT, FOOTER_TEXT,
 )
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction
 from .ace import calculate_ace
-from assets.TcCites import BOB
+from .ports import BOB
 from features.ailoc import predict_landfall_latlon
-from features.aibc import apply_simple_bias  # <<< NEW
+from features.aibc import apply_simple_bias
+
+# Repo-root assets folder (works no matter what the current directory is)
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 
 CAT = [
@@ -394,10 +400,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         
 
     # -------------------- TIME STRINGS --------------------
-    observed_start_time = track_data_obs['tnd'].iloc[0].strftime("%HZ, %d %b %Y")
-    observed_end_time = track_data_obs['tnd'].iloc[-1].strftime("%HZ, %d %b %Y")
-    forecast_start_time = track_data_for['tnd'].iloc[0].strftime("%HZ, %d %b %Y")
-    forecast_end_time = track_data_for['tnd'].iloc[-1].strftime("%HZ, %d %b %Y")
+    observed_start_time = track_data_obs['tnd'].iloc[0].strftime(DATE_FORMAT)
+    observed_end_time = track_data_obs['tnd'].iloc[-1].strftime(DATE_FORMAT)
+    forecast_start_time = track_data_for['tnd'].iloc[0].strftime(DATE_FORMAT)
+    forecast_end_time = track_data_for['tnd'].iloc[-1].strftime(DATE_FORMAT)
 
     # -------------------- PORTS & DISTANCES --------------------
     City = BOB()
@@ -607,7 +613,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     try:
         ml_landfall_lat, ml_landfall_lon = predict_landfall_latlon(
             track_data_obs,
-            training_csv_path="assets/climo.csv",  # adjust path if needed
+            training_csv_path=str(ASSETS_DIR / "climo.csv"),
             k=10
         )
     except Exception as e:
@@ -682,7 +688,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         for x, ha, t in [
             (0.01, "left",
              f"WIND: {ci}KT | PRESSURE: {pressure}MB | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
-            (0.99, "right", "© XP WEATHER"),
+            (0.99, "right", FOOTER_TEXT),
         ]:
             ax.text(
                 x, 0.01, t,

@@ -3,12 +3,17 @@
 import numpy as np
 import pandas as pd
 
+from pathlib import Path
+
+# Repo-root assets folder (works no matter what the current directory is)
+_ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
+
 # Simple in-memory cache so we only read CSV once
 _BIAS_TABLE_CACHE = None
 _BIAS_PATH_CACHE = None
 
 
-def _get_bias_table(training_csv_path="assets/climo_bias.csv"):
+def _get_bias_table(training_csv_path=None):
     """
     Load segmented bias table from climo_bias.csv.
 
@@ -204,7 +209,7 @@ def apply_simple_bias(
     last_lon=None,
     last_wind=None,
     last_dir=None,
-    training_csv_path="assets/climo_bias.csv"
+    training_csv_path=None
 ):
     """
     Apply a very light 'bias correction' for the forecast track.
