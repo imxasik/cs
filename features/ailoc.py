@@ -80,7 +80,7 @@ def extract_current_features(track_data_obs):
 
 
 def predict_landfall_latlon(track_data_obs,
-                            training_csv_path="../assets/climo.csv",
+                            training_csv_path=None,
                             k=10):
     """
     Public function to call from plotting.py.
