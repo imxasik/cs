@@ -12,6 +12,7 @@ FLOAT_DEFAULTS = {
     "minlat_offset": -0.0,
     "maxlat_offset": -0.5,
     "output_dpi": 300.0,
+    "approach_radius": 800.0,  # ports farther than this (km) are skipped in the approach table
 }
 
 # Default boolean toggles
@@ -24,18 +25,30 @@ BOOL_DEFAULTS = {
     "show_ace_box": True,
     "show_max_wind_boxes": True,
     "show_footer": True,
-    "show_ai_position": True,   # NEW
-    "show_bias_track": True,    # NEW
+    "show_ai_position": True,
+    "show_bias_track": True,
+    "organize_by_year": False,  # save into output/plots/<year>/
+    "show_landfall": True,      # estimate + mark where the track hits the coast
+    "show_approach_table": True,  # closest approach per port table
+}
+
+# Default strings under [style]
+STYLE_DEFAULTS = {
+    "theme": "xp",                       # reserved for future themes
+    "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
+    "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
 }
 
 
 def _load_config():
     root_dir = Path(__file__).resolve().parent.parent
     cfg_path = root_dir / "config.ini"
-    parser = configparser.ConfigParser()
+    # interpolation=None so values may contain '%' (e.g. date_format = %HZ, %d %b %Y)
+    parser = configparser.ConfigParser(interpolation=None)
 
     float_values = FLOAT_DEFAULTS.copy()
     bool_values = BOOL_DEFAULTS.copy()
+    style_values = STYLE_DEFAULTS.copy()
 
     if cfg_path.exists():
         parser.read(cfg_path)
@@ -61,10 +74,16 @@ def _load_config():
                         bool_values[key] = False
                     # else keep default
 
-    return float_values, bool_values
+        # Strings under [style] (empty values keep defaults)
+        if parser.has_section("style"):
+            for key in STYLE_DEFAULTS:
+                if key in parser["style"] and parser["style"][key].strip():
+                    style_values[key] = parser["style"][key]
+
+    return float_values, bool_values, style_values
 
 
-_FLOATS, _BOOLS = _load_config()
+_FLOATS, _BOOLS, _STYLE = _load_config()
 
 BUFFER = _FLOATS["buffer"]
 UCR = _FLOATS["ucr"]
@@ -85,6 +104,14 @@ SHOW_ACE_BOX = _BOOLS["show_ace_box"]
 SHOW_MAX_WIND_BOXES = _BOOLS["show_max_wind_boxes"]
 SHOW_FOOTER = _BOOLS["show_footer"]
 
-# NEW exports
 SHOW_AI_POSITION = _BOOLS["show_ai_position"]
 SHOW_BIAS_TRACK = _BOOLS["show_bias_track"]
+ORGANIZE_BY_YEAR = _BOOLS["organize_by_year"]
+SHOW_LANDFALL = _BOOLS["show_landfall"]
+SHOW_APPROACH_TABLE = _BOOLS["show_approach_table"]
+
+APPROACH_RADIUS = _FLOATS["approach_radius"]
+
+THEME = _STYLE["theme"]
+DATE_FORMAT = _STYLE["date_format"]
+FOOTER_TEXT = _STYLE["footer_text"]

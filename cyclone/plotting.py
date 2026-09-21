@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,13 +15,19 @@ from .config import (
     SHOW_CONE, SHOW_LEGEND, SHOW_PORTS, SHOW_PORT_TABLE,
     SHOW_MOVEMENT_TABLE, SHOW_ACE_BOX, SHOW_MAX_WIND_BOXES,
     SHOW_FOOTER, SHOW_AI_POSITION, SHOW_BIAS_TRACK,
+    SHOW_LANDFALL, SHOW_APPROACH_TABLE, APPROACH_RADIUS,
+    DATE_FORMAT, FOOTER_TEXT,
 )
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction
 from .ace import calculate_ace
-from assets.TcCites import BOB
+from .landfall import find_landfall, closest_approaches, format_track_time
+from .ports import BOB
 from features.ailoc import predict_landfall_latlon
-from features.aibc import apply_simple_bias  # <<< NEW
+from features.aibc import apply_simple_bias
+
+# Repo-root assets folder (works no matter what the current directory is)
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 
 CAT = [
@@ -225,7 +233,60 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             '--', color='magenta', linewidth=1.5,
             alpha=0.7, label='Bias-Corrected Track', zorder=4
         )
-        
+
+
+    # ------- LANDFALL ESTIMATE & PORT APPROACHES --------
+    landfall_info = None
+    approach_rows = []
+
+    if SHOW_LANDFALL or SHOW_APPROACH_TABLE:
+        try:
+            if SHOW_LANDFALL:
+                landfall_info = find_landfall(track_data_obs, track_data_for, BOB())
+                if landfall_info is not None:
+                    where = (f"near {landfall_info['place']}"
+                             if landfall_info['place']
+                             else f"at {landfall_info['lat']}N, {landfall_info['lon']}E")
+                    print(f"[LANDFALL] Est. landfall: {landfall_info['time_str']} "
+                          f"{where} ({landfall_info['time']:%d %b %Y %H:%M} UTC)")
+                else:
+                    print("[LANDFALL] No landfall detected within the forecast period.")
+
+            if SHOW_APPROACH_TABLE:
+                approach_rows = closest_approaches(
+                    track_data_obs, track_data_for, BOB(),
+                    radius_km=APPROACH_RADIUS,
+                )
+                if approach_rows:
+                    tops = " | ".join(
+                        f"{r['name']} {r['dist_km']}km @ {r['time_str']}"
+                        for r in approach_rows[:3]
+                    )
+                    print(f"[APPROACH] Closest: {tops}")
+        except Exception as e:
+            print(f"[WARN] Landfall/approach estimate failed: {e}")
+
+    if SHOW_LANDFALL and landfall_info is not None:
+        lf_lon, lf_lat = landfall_info["lon"], landfall_info["lat"]
+        ax.plot(lf_lon, lf_lat, "X", ms=11, mec="k",
+                mfc="red", zorder=9)
+        lf_label = f"LANDFALL ~{landfall_info['time_str']}"
+        if landfall_info["place"]:
+            lf_label += f"\n{landfall_info['place']}"
+        ax.annotate(
+            lf_label,
+            xy=(lf_lon, lf_lat),
+            xycoords="data",
+            xytext=(-12, 14),
+            textcoords="offset points",
+            fontsize=8,
+            fontweight="bold",
+            ha="right",
+            va="bottom",
+            bbox=dict(facecolor="white", alpha=0.8,
+                      edgecolor="darkred", boxstyle="round,pad=0.3"),
+            zorder=10,
+        )
 
     # ------- FORECAST POINTS + LABELS --------
     label_positions = []  # in pixel space
@@ -381,6 +442,19 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 )
             )
 
+        if SHOW_LANDFALL and landfall_info is not None:
+            legend_elements_prev.append(
+                Line2D(
+                    [0], [0],
+                    marker='X',
+                    color='k',
+                    markerfacecolor='red',
+                    markersize=9,
+                    lw=0,
+                    label='Landfall Est.'
+                )
+            )
+
         legend = ax.legend(
             handles=legend_elements_prev,
             loc='upper right',
@@ -394,10 +468,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         
 
     # -------------------- TIME STRINGS --------------------
-    observed_start_time = track_data_obs['tnd'].iloc[0].strftime("%HZ, %d %b %Y")
-    observed_end_time = track_data_obs['tnd'].iloc[-1].strftime("%HZ, %d %b %Y")
-    forecast_start_time = track_data_for['tnd'].iloc[0].strftime("%HZ, %d %b %Y")
-    forecast_end_time = track_data_for['tnd'].iloc[-1].strftime("%HZ, %d %b %Y")
+    observed_start_time = track_data_obs['tnd'].iloc[0].strftime(DATE_FORMAT)
+    observed_end_time = track_data_obs['tnd'].iloc[-1].strftime(DATE_FORMAT)
+    forecast_start_time = track_data_for['tnd'].iloc[0].strftime(DATE_FORMAT)
+    forecast_end_time = track_data_for['tnd'].iloc[-1].strftime(DATE_FORMAT)
 
     # -------------------- PORTS & DISTANCES --------------------
     City = BOB()
@@ -419,6 +493,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 visible_cities.append((location, plat, plon))
 
     if SHOW_PORT_TABLE and table_data:
+        # When the closest-approach table is also shown, keep this one above it
+        _pt_y = 0.30 if (SHOW_APPROACH_TABLE and approach_rows) else 0.045
         table = ax.table(
             cellText=table_data,
             loc='left',
@@ -426,7 +502,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             cellLoc='center',
             colColours=['#f0f0f0'],
             zorder=7,
-            bbox=[0.005, 0.045, 0.22, 0.12]
+            bbox=[0.005, _pt_y, 0.22, 0.12]
         )
         table.auto_set_font_size(False)
         table.set_fontsize(10)
@@ -443,6 +519,43 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
             zorder=7
         )
+
+    # -------------------- CLOSEST APPROACH TABLE --------------------
+    if SHOW_APPROACH_TABLE and approach_rows:
+        shown = approach_rows[:5]
+        appr_header = ["PORT", "MIN DIST", "AT"]
+        appr_data = [
+            [r["name"], f"{r['dist_km']} km",
+             f"{r['time_str']}{'*' if r['past'] else ''}"]
+            for r in shown
+        ]
+
+        appr_table = ax.table(
+            cellText=appr_data,
+            loc='left',
+            colLabels=appr_header,
+            cellLoc='center',
+            colColours=['#f0f0f0', '#f0f0f0', '#f0f0f0'],
+            zorder=7,
+            bbox=[0.005, 0.045, 0.24, 0.05 + 0.035 * len(shown)]
+        )
+        appr_table.auto_set_font_size(False)
+        appr_table.set_fontsize(8)
+        appr_table.auto_set_column_width([0, 1, 2])
+        for (_r, _c), cell in appr_table.get_celld().items():
+            if _r == 0:
+                cell.set_text_props(fontweight='bold')
+        appr_table.scale(1, 1.3)
+
+        if any(r["past"] for r in shown):
+            ax.text(
+                0.005, 0.038,
+                "* closest approach already passed",
+                transform=ax.transAxes,
+                fontsize=6.5, color='#444444',
+                va="top", ha="left",
+                zorder=7
+            )
 
     if SHOW_PORTS:
         # City labels: centered above marker + overlap control
@@ -607,7 +720,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     try:
         ml_landfall_lat, ml_landfall_lon = predict_landfall_latlon(
             track_data_obs,
-            training_csv_path="assets/climo.csv",  # adjust path if needed
+            training_csv_path=str(ASSETS_DIR / "climo.csv"),
             k=10
         )
     except Exception as e:
@@ -682,7 +795,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         for x, ha, t in [
             (0.01, "left",
              f"WIND: {ci}KT | PRESSURE: {pressure}MB | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
-            (0.99, "right", "© XP WEATHER"),
+            (0.99, "right", FOOTER_TEXT),
         ]:
             ax.text(
                 x, 0.01, t,
@@ -698,4 +811,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     plt.savefig(output_path, dpi=OUTPUT_DPI, bbox_inches='tight')
     plt.close(fig)
+
+    # Hand the computed insights back to the caller (CLI -> feature plugins)
+    return {"landfall": landfall_info, "approaches": approach_rows}
     
