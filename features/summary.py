@@ -479,6 +479,27 @@ def run_feature(context: dict):
     text_lines = summary_data["text_lines"]
     updated_str = summary_data.get("updated_str", "")
 
+    # --------- LANDFALL ESTIMATE & CLOSEST APPROACH (from context) ---------
+    landfall_info = context.get("landfall")
+    approaches = context.get("approaches") or []
+
+    if landfall_info:
+        where = (f"near {landfall_info['place']}"
+                 if landfall_info['place']
+                 else f"at {landfall_info['lat']:.1f}N, {landfall_info['lon']:.1f}E")
+        text_lines.append("")
+        text_lines.append(f"Landfall Estimate: ~{landfall_info['time_str']} {where}")
+    else:
+        text_lines.append("")
+        text_lines.append("Landfall Estimate: No landfall within forecast period")
+
+    if approaches:
+        text_lines.append("")
+        text_lines.append("Closest Approach (min distance & time):")
+        for r in approaches[:3]:
+            when = f"at {r['time_str']}" + (" (passed)" if r["past"] else "")
+            text_lines.append(f"  {r['name']}: {r['dist_km']} km {when}")
+
     # PDF output only
     summary_pdf_path = output_dir / f"{cyclone_name}_summary.pdf"
     _write_pdf(summary_pdf_path, cyclone_name, text_lines, updated_str, plot_path)
