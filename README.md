@@ -93,9 +93,14 @@ Toggles (1 = ON, 0 = OFF):
 - `show_ai_position` – show/hide the AI landfall position star.
 - `show_bias_track` – show/hide the AI bias-corrected track.
 - `show_landfall` – estimate & mark landfall (where/when the forecast
-  track first crosses the coastline) with a red ✕ marker + label.
-- `show_approach_table` – closest-approach table per port:
-  minimum distance and *when* it happens (e.g. `Kakinada 71 km 28/18Z`).
+  track first crosses the coastline) with a red ✕ marker + a compact
+  `LF-DD/HHZ` label placed bottom-left of the marker (it falls back to
+  left / up-left / above / bottom-right if that would collide with a
+  forecast time label).
+- `show_approach_table` – closest-approach table per port: minimum
+  distance plus a `DIR` column giving the direction of the storm centre
+  from that port at closest approach (e.g. `Kakinada 71 km W`), i.e.
+  which side of the port the centre passes on.
 
 Numbers:
 

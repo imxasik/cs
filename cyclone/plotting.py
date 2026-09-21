@@ -259,7 +259,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 )
                 if approach_rows:
                     tops = " | ".join(
-                        f"{r['name']} {r['dist_km']}km @ {r['time_str']}"
+                        f"{r['name']} {r['dist_km']} km {r['dir_str']} "
+                        f"@ {r['time_str']}"
                         for r in approach_rows[:3]
                     )
                     print(f"[APPROACH] Closest: {tops}")
@@ -270,23 +271,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         lf_lon, lf_lat = landfall_info["lon"], landfall_info["lat"]
         ax.plot(lf_lon, lf_lat, "X", ms=11, mec="k",
                 mfc="red", zorder=9)
-        lf_label = f"LANDFALL ~{landfall_info['time_str']}"
-        if landfall_info["place"]:
-            lf_label += f"\n{landfall_info['place']}"
-        ax.annotate(
-            lf_label,
-            xy=(lf_lon, lf_lat),
-            xycoords="data",
-            xytext=(-12, 14),
-            textcoords="offset points",
-            fontsize=8,
-            fontweight="bold",
-            ha="right",
-            va="bottom",
-            bbox=dict(facecolor="white", alpha=0.8,
-                      edgecolor="darkred", boxstyle="round,pad=0.3"),
-            zorder=10,
-        )
+        # The label itself is drawn after the forecast point labels below,
+        # so that its overlap check can see them (see "LANDFALL LABEL").
 
     # ------- FORECAST POINTS + LABELS --------
     label_positions = []  # in pixel space
@@ -389,6 +375,60 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 ha='left',
                 va='bottom'
             )
+
+    # -------------------- LANDFALL LABEL --------------------
+    # Drawn after the forecast labels so the overlap check can see them.
+    # Mirrors the forecast labels: they sit up-right of their marker, the
+    # landfall label sits down-left of the red X.
+    if SHOW_LANDFALL and landfall_info is not None:
+        lf_label = f"LF-{landfall_info['time_str']}"
+
+        fig = ax.figure
+        dpi = fig.dpi
+
+        lf_candidates = [
+            (-5, -5, 'right', 'top'),     # down-left (default)
+            (-10, 0, 'right', 'center'),  # left
+            (-5, 5, 'right', 'bottom'),   # up-left
+            (0, 10, 'center', 'bottom'),  # above
+            (5, -5, 'left', 'top'),       # down-right
+        ]
+
+        lf_min_dist_px = 15
+        lf_base_disp = ax.transData.transform((lf_lon, lf_lat))
+        lf_dx_pt, lf_dy_pt, lf_ha, lf_va = lf_candidates[0]
+
+        for dx_pt, dy_pt, ha, va in lf_candidates:
+            dx_px = dx_pt * dpi / 72.0
+            dy_px = dy_pt * dpi / 72.0
+            cand_disp = lf_base_disp + np.array([dx_px, dy_px])
+
+            if all(
+                np.hypot(cand_disp[0] - x, cand_disp[1] - y) > lf_min_dist_px
+                for (x, y) in label_positions
+            ):
+                lf_dx_pt, lf_dy_pt, lf_ha, lf_va = dx_pt, dy_pt, ha, va
+                label_positions.append((cand_disp[0], cand_disp[1]))
+                break
+
+        ax.annotate(
+            lf_label,
+            xy=(lf_lon, lf_lat),
+            xycoords='data',
+            xytext=(lf_dx_pt, lf_dy_pt),
+            textcoords='offset points',
+            fontsize=8,
+            fontweight='bold',
+            ha=lf_ha,
+            va=lf_va,
+            bbox=dict(
+                facecolor='white',
+                alpha=0.8,
+                edgecolor='darkred',
+                boxstyle='round,pad=0.3'
+            ),
+            zorder=10
+        )
 
   # -------------------- LEGEND --------------------
     if SHOW_LEGEND:
@@ -523,10 +563,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     # -------------------- CLOSEST APPROACH TABLE --------------------
     if SHOW_APPROACH_TABLE and approach_rows:
         shown = approach_rows[:5]
-        appr_header = ["PORT", "MIN DIST", "AT"]
+        appr_header = ["PORT", "MIN DIST", "DIR"]
         appr_data = [
-            [r["name"], f"{r['dist_km']} km",
-             f"{r['time_str']}{'*' if r['past'] else ''}"]
+            [f"{r['name']}{'*' if r['past'] else ''}",
+             f"{r['dist_km']} km", r["dir_str"]]
             for r in shown
         ]
 
