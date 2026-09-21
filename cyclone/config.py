@@ -12,6 +12,7 @@ FLOAT_DEFAULTS = {
     "minlat_offset": -0.0,
     "maxlat_offset": -0.5,
     "output_dpi": 300.0,
+    "approach_radius": 800.0,  # ports farther than this (km) are skipped in the approach table
 }
 
 # Default boolean toggles
@@ -27,6 +28,8 @@ BOOL_DEFAULTS = {
     "show_ai_position": True,
     "show_bias_track": True,
     "organize_by_year": False,  # save into output/plots/<year>/
+    "show_landfall": True,      # estimate + mark where the track hits the coast
+    "show_approach_table": True,  # closest approach per port table
 }
 
 # Default strings under [style]
@@ -104,6 +107,10 @@ SHOW_FOOTER = _BOOLS["show_footer"]
 SHOW_AI_POSITION = _BOOLS["show_ai_position"]
 SHOW_BIAS_TRACK = _BOOLS["show_bias_track"]
 ORGANIZE_BY_YEAR = _BOOLS["organize_by_year"]
+SHOW_LANDFALL = _BOOLS["show_landfall"]
+SHOW_APPROACH_TABLE = _BOOLS["show_approach_table"]
+
+APPROACH_RADIUS = _FLOATS["approach_radius"]
 
 THEME = _STYLE["theme"]
 DATE_FORMAT = _STYLE["date_format"]
