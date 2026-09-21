@@ -20,6 +20,7 @@ It is designed so that:
   - `cone.py` – builds the smooth NHC-style cone polygon.
   - `geo.py` – distance, bearing & direction helpers.
   - `ace.py` – ACE (Accumulated Cyclone Energy) calculator.
+  - `landfall.py` – landfall estimation + closest-approach-per-port math.
   - `plotting.py` – all Matplotlib plotting code (uses toggles from `config.ini`).
   - `ports.py` – sample Bay of Bengal ports (edit as you like).
   - `feature_manager.py` – automatically loads feature modules from `features/`.
@@ -91,6 +92,15 @@ Toggles (1 = ON, 0 = OFF):
 - `show_footer` – show/hide footer text.
 - `show_ai_position` – show/hide the AI landfall position star.
 - `show_bias_track` – show/hide the AI bias-corrected track.
+- `show_landfall` – estimate & mark landfall (where/when the forecast
+  track first crosses the coastline) with a red ✕ marker + label.
+- `show_approach_table` – closest-approach table per port:
+  minimum distance and *when* it happens (e.g. `Kakinada 71 km 28/18Z`).
+
+Numbers:
+
+- `approach_radius` – ports farther than this many km are skipped in the
+  closest-approach table (default 800).
 
 Under `[style]`:
 

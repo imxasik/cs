@@ -166,14 +166,14 @@ def process(cyclone_name, track_obs, track_for, is_invest,
     output_path = plots_dir / f"{cyclone_name}_Track.png"
 
     print(f"{BOLD}{BLUE}Generating track & cone plot...{RESET}\n")
-    plotting.plot_cyclone(
+    results = plotting.plot_cyclone(
         cyclone_name=cyclone_name,
         track_data_obs=track_obs,
         track_data_for=track_for,
         is_invest=is_invest,
         map_image_path=str(map_file),
         output_path=str(output_path),
-    )
+    ) or {}
     print(f"{GREEN}✓ Plot saved to:{RESET} {BOLD}{output_path}{RESET}")
 
     if run_features:
@@ -182,6 +182,8 @@ def process(cyclone_name, track_obs, track_for, is_invest,
             "track_obs": track_obs,
             "track_for": track_for,
             "is_invest": is_invest,
+            "landfall": results.get("landfall"),
+            "approaches": results.get("approaches", []),
             "output_dir": str(files_dir),
             "map_file": str(map_file),
             "output_image": str(output_path),
