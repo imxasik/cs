@@ -16,6 +16,7 @@ from .config import (
     SHOW_MOVEMENT_TABLE, SHOW_ACE_BOX, SHOW_MAX_WIND_BOXES,
     SHOW_FOOTER, SHOW_AI_POSITION, SHOW_BIAS_TRACK,
     SHOW_LANDFALL, SHOW_APPROACH_TABLE, APPROACH_RADIUS,
+    MAX_APPROACH_PORTS,
     DATE_FORMAT, FOOTER_TEXT,
 )
 from .cone import create_nhc_cone
@@ -256,12 +257,13 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 approach_rows = closest_approaches(
                     track_data_obs, track_data_for, BOB(),
                     radius_km=APPROACH_RADIUS,
+                    top=MAX_APPROACH_PORTS,
                 )
                 if approach_rows:
                     tops = " | ".join(
                         f"{r['name']} {r['dist_km']} km {r['dir_str']} "
                         f"@ {r['time_str']}"
-                        for r in approach_rows[:3]
+                        for r in approach_rows[:MAX_APPROACH_PORTS]
                     )
                     print(f"[APPROACH] Closest: {tops}")
         except Exception as e:
@@ -534,7 +536,11 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     if SHOW_PORT_TABLE and table_data:
         # When the closest-approach table is also shown, keep this one above it
-        _pt_y = 0.30 if (SHOW_APPROACH_TABLE and approach_rows) else 0.045
+        if SHOW_APPROACH_TABLE and approach_rows:
+            _n_shown = min(len(approach_rows), MAX_APPROACH_PORTS)
+            _pt_y = 0.085 + 0.05 + 0.035 * _n_shown + 0.02
+        else:
+            _pt_y = 0.045
         table = ax.table(
             cellText=table_data,
             loc='left',
@@ -562,7 +568,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     # -------------------- CLOSEST APPROACH TABLE --------------------
     if SHOW_APPROACH_TABLE and approach_rows:
-        shown = approach_rows[:5]
+        # Only the N closest ports are listed (max_approach_ports in config.ini)
+        shown = approach_rows[:MAX_APPROACH_PORTS]
         appr_header = ["PORT", "MIN DIST", "DIR"]
         appr_data = [
             [f"{r['name']}{'*' if r['past'] else ''}",
@@ -577,7 +584,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             cellLoc='center',
             colColours=['#f0f0f0', '#f0f0f0', '#f0f0f0'],
             zorder=7,
-            bbox=[0.005, 0.045, 0.24, 0.05 + 0.035 * len(shown)]
+            bbox=[0.005, 0.085, 0.24, 0.05 + 0.035 * len(shown)]
         )
         appr_table.auto_set_font_size(False)
         appr_table.set_fontsize(8)
@@ -589,7 +596,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
         if any(r["past"] for r in shown):
             ax.text(
-                0.005, 0.038,
+                0.005, 0.078,
                 "* closest approach already passed",
                 transform=ax.transAxes,
                 fontsize=6.5, color='#444444',

@@ -3,7 +3,7 @@ import pkgutil
 import sys
 from pathlib import Path
 
-def run_all_features(context: dict):
+def run_all_features(context: dict) -> list:
     """
     Auto-discover and run all feature modules under the root-level `features` package.
 
@@ -20,12 +20,16 @@ def run_all_features(context: dict):
         - output_dir
         - map_file
         - output_image
+
+    Returns the list of feature module names that actually ran.
     """
     root_dir = Path(__file__).resolve().parent.parent
     features_dir = root_dir / "features"
 
+    ran = []
+
     if not features_dir.exists():
-        return
+        return ran
 
     # Ensure root_dir is in sys.path so `features` is importable
     if str(root_dir) not in sys.path:
@@ -35,7 +39,7 @@ def run_all_features(context: dict):
         import features  # type: ignore
     except ImportError as e:
         print(f"[FEATURE] Could not import features package: {e}")
-        return
+        return ran
 
     for module_info in pkgutil.iter_modules(features.__path__):
         name = module_info.name
@@ -53,5 +57,8 @@ def run_all_features(context: dict):
             try:
                 print(f"[FEATURE] Running {full_name}.run_feature()")
                 fn(context)
+                ran.append(name)
             except Exception as e:
                 print(f"[FEATURE] Error in {full_name}.run_feature: {e}")
+
+    return ran

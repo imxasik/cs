@@ -9,7 +9,7 @@ The context dict contains:
     track_obs    : pandas.DataFrame  (tnd, Latitude, Longitude, Intensity, Pressure)
     track_for    : pandas.DataFrame  (tnd, Latitude, Longitude, Intensity, WindR24/34/64)
     is_invest    : bool
-    output_dir   : str  -> output/files   (put generated text/PDF files here)
+    output_dir   : str  -> output/files   (put generated text files here)
     map_file     : str  -> assets/Map.png
     output_image : str  -> the PNG that was just generated
 """

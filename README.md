@@ -26,7 +26,6 @@ It is designed so that:
   - `feature_manager.py` – automatically loads feature modules from `features/`.
 - `features/` – pluggable feature modules:
   - `_TEMPLATE.py` – copy-and-rename starter for your own feature.
-  - `summary.py` – generates a PDF summary report per cyclone.
   - `ailoc.py` – k-NN landfall location prediction ("AI Position" star).
   - `aibc.py` – climatology-guided bias correction ("AI-BC Track").
   - `ai.py` – simple static bias fallback.
@@ -34,7 +33,8 @@ It is designed so that:
   (`climo.csv`, `climo_bias.csv`).
 - `data/` – put all your cyclone data text files here (sub-folders OK,
   e.g. `data/2025/ditwah.txt`). See `data/README.md` for the file format.
-- `output/` – generated results: `output/plots/` (PNG) and `output/files/` (PDF).
+- `output/` – generated results: `output/plots/` (PNG). `output/files/` is
+  kept empty for anything your own feature plugins write there.
 
 ## Quick start
 
@@ -100,12 +100,15 @@ Toggles (1 = ON, 0 = OFF):
 - `show_approach_table` – closest-approach table per port: minimum
   distance plus a `DIR` column giving the direction of the storm centre
   from that port at closest approach (e.g. `Kakinada 71 km W`), i.e.
-  which side of the port the centre passes on.
+  which side of the port the centre passes on. Only the closest ports are
+  listed (3 by default — see `max_approach_ports`).
 
 Numbers:
 
 - `approach_radius` – ports farther than this many km are skipped in the
   closest-approach table (default 800).
+- `max_approach_ports` – maximum number of closest ports listed in the
+  approach table on the map (default 3).
 
 Under `[style]`:
 

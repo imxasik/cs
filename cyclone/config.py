@@ -13,6 +13,7 @@ FLOAT_DEFAULTS = {
     "maxlat_offset": -0.5,
     "output_dpi": 300.0,
     "approach_radius": 800.0,  # ports farther than this (km) are skipped in the approach table
+    "max_approach_ports": 3.0,  # max number of closest ports listed in the approach table
 }
 
 # Default boolean toggles
@@ -111,6 +112,8 @@ SHOW_LANDFALL = _BOOLS["show_landfall"]
 SHOW_APPROACH_TABLE = _BOOLS["show_approach_table"]
 
 APPROACH_RADIUS = _FLOATS["approach_radius"]
+# At least 1 port is always listed (0 or negative -> 1)
+MAX_APPROACH_PORTS = max(1, int(_FLOATS["max_approach_ports"]))
 
 THEME = _STYLE["theme"]
 DATE_FORMAT = _STYLE["date_format"]

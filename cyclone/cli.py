@@ -191,8 +191,9 @@ def process(cyclone_name, track_obs, track_for, is_invest,
             "files_dir": str(files_dir),
             "outputs_dir": str(out_root),
         }
-        run_all_features(context)
-        print(f"{GREEN}✓ Feature outputs in:{RESET} {BOLD}{files_dir}{RESET}")
+        ran_features = run_all_features(context)
+        if ran_features:
+            print(f"{GREEN}✓ Feature outputs in:{RESET} {BOLD}{files_dir}{RESET}")
 
     return output_path
 

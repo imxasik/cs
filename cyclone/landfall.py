@@ -1,8 +1,8 @@
 """
 Landfall estimation & closest-approach-per-port calculations.
 
-Pure helpers — no plotting here. Used by cyclone/plotting.py (map output),
-cyclone/cli.py (console + feature context) and features/summary.py (PDF).
+Pure helpers — no plotting here. Used by cyclone/plotting.py (map output)
+and cyclone/cli.py (console + feature context).
 
 The coastline below is a deliberately coarse (0.3-0.7 deg spacing) polyline
 set covering the North Indian Ocean map area. It is accurate enough to
@@ -250,7 +250,7 @@ def find_landfall(track_obs, track_for, ports=None, place_radius_km=250.0):
 # Closest approach per port
 # --------------------------------------------------------------------------
 def closest_approaches(track_obs, track_for, ports,
-                       radius_km=800.0, top=8):
+                       radius_km=800.0, top=3):
     """
     For every port: the minimum distance the track (observed + forecast)
     comes to it, and *when* that happens.
