@@ -14,7 +14,9 @@ The context dict contains:
     - map_file
     - output_image
     - landfall    (dict or None: time/lon/lat/place/place_km/time_str)
-    - approaches  (list of dicts: name/dist_km/time/time_str/past)
+    - approaches  (list of dicts: name/dist_km/time/time_str/past/
+                   bearing/dir_str — dir_str is the 16-point cardinal
+                   direction of the storm centre from that port)
 
 Your feature file will be auto-discovered and run after the main plot
 is generated, without editing any other Python file.
