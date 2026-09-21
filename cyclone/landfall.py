@@ -14,7 +14,7 @@ from math import cos, sin, radians, degrees, atan2, hypot, sqrt
 
 import pandas as pd
 
-from .geo import haversine
+from .geo import haversine, get_bearing, get_cardinal_direction
 
 # --------------------------------------------------------------------------
 # Approximate coastline polylines: each is a list of (lon, lat) vertices.
@@ -262,6 +262,10 @@ def closest_approaches(track_obs, track_for, ports,
         time_str : 'DD/HHZ'
         past     : True if the closest approach already happened
                    (at/before the last observation time)
+        bearing  : degrees (0-360) from the port to the storm centre at
+                   closest approach
+        dir_str  : 16-point cardinal of `bearing` ('N', 'SSE', ...) — i.e.
+                   which side of the port the centre passes on
     Only ports within radius_km are returned, at most `top` entries.
     """
     pts = _track_points(track_obs, track_for)
@@ -274,7 +278,7 @@ def closest_approaches(track_obs, track_for, ports,
 
     results = []
     for name, (plat, plon) in ports.items():
-        best = None  # (dist, time)
+        best = None  # (dist, time, lon, lat) of the closest track point
         for i in range(len(pts) - 1):
             t0, lon0, lat0 = pts[i]
             t1, lon1, lat1 = pts[i + 1]
@@ -283,19 +287,24 @@ def closest_approaches(track_obs, track_for, ports,
                                          (lon1, lat1))
             if best is None or d < best[0]:
                 ct = t0 + (t1 - t0) * frac
-                best = (d, ct)
+                clon = lon0 + (lon1 - lon0) * frac
+                clat = lat0 + (lat1 - lat0) * frac
+                best = (d, ct, clon, clat)
 
         if best is None:
             continue
-        d, ct = best
+        d, ct, clon, clat = best
         if d > radius_km:
             continue
+        bearing = get_bearing((plat, plon), (clat, clon))
         results.append({
             "name": name,
             "dist_km": int(round(d)),
             "time": ct,
             "time_str": format_track_time(ct),
             "past": bool(last_obs_t is not None and ct <= last_obs_t),
+            "bearing": round(bearing, 1),
+            "dir_str": get_cardinal_direction(bearing),
         })
 
     results.sort(key=lambda r: r["dist_km"])
