@@ -14,6 +14,10 @@ FLOAT_DEFAULTS = {
     "output_dpi": 300.0,
     "approach_radius": 800.0,  # ports farther than this (km) are skipped in the port table
     "approach_ports": 4.0,  # how many of the closest ports the table lists
+    # Bottom-centre forecast table (Time / Speed rows)
+    "forecast_tz_offset": 6.0,        # hours added to the UTC synoptic times (6 = BST)
+    "forecast_table_max_cols": 8.0,   # thin the steps out if there are more than this
+    "forecast_table_min_fontsize": 6.8,
 }
 
 # Default boolean toggles
@@ -31,6 +35,9 @@ BOOL_DEFAULTS = {
     "organize_by_year": False,  # save into output/plots/<year>/
     "show_landfall": True,      # estimate + mark where the track hits the coast
     "show_approach_table": True,  # port table: current distance & direction per port
+    "show_forecast_table": True,  # bottom-centre Time / Speed forecast table
+    "show_forecast_key": True,    # map key strip above the forecast table
+    "full_track_extent": False,   # zoom out so the whole observed track shows
 }
 
 # Default strings under [style]
@@ -38,6 +45,19 @@ STYLE_DEFAULTS = {
     "theme": "xp",                       # reserved for future themes
     "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
     "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
+    "forecast_time_label": "Time (BST)",   # first cell of the forecast table
+    "forecast_speed_label": "Speed (KM)",  # first cell of the speed row
+    "forecast_speed_unit": "KM/H",         # appended to every speed cell
+    # What the "Speed" row shows:
+    #   wind   - the forecast wind intensity in km/h (knots x 1.852), so the
+    #            row matches the knots on the track (25KT -> 46KM/H)
+    #   motion - the storm's translation speed in km/h
+    "forecast_speed_mode": "wind",
+    # Output PNG name (without .png).  Empty = "<Name>_Track".
+    # "{name}" is replaced by the cyclone/invest name, so
+    #   output_name = {name}_Track_v2
+    # saves 95B as 95B_Track_v2.png.
+    "output_name": "",
 }
 
 
@@ -110,10 +130,38 @@ SHOW_BIAS_TRACK = _BOOLS["show_bias_track"]
 ORGANIZE_BY_YEAR = _BOOLS["organize_by_year"]
 SHOW_LANDFALL = _BOOLS["show_landfall"]
 SHOW_APPROACH_TABLE = _BOOLS["show_approach_table"]
+SHOW_FORECAST_TABLE = _BOOLS["show_forecast_table"]
+SHOW_FORECAST_KEY = _BOOLS["show_forecast_key"]
+FULL_TRACK_EXTENT = _BOOLS["full_track_extent"]
 
 APPROACH_RADIUS = _FLOATS["approach_radius"]
 APPROACH_PORTS = int(_FLOATS["approach_ports"])
 
+FORECAST_TZ_OFFSET = _FLOATS["forecast_tz_offset"]
+FORECAST_TABLE_MAX_COLS = int(_FLOATS["forecast_table_max_cols"])
+FORECAST_TABLE_MIN_FONTSIZE = _FLOATS["forecast_table_min_fontsize"]
+
 THEME = _STYLE["theme"]
 DATE_FORMAT = _STYLE["date_format"]
 FOOTER_TEXT = _STYLE["footer_text"]
+FORECAST_TIME_LABEL = _STYLE["forecast_time_label"]
+FORECAST_SPEED_LABEL = _STYLE["forecast_speed_label"]
+FORECAST_SPEED_UNIT = _STYLE["forecast_speed_unit"]
+FORECAST_SPEED_MODE = _STYLE["forecast_speed_mode"].strip().lower()
+OUTPUT_NAME = _STYLE["output_name"]
+
+
+def output_stem(cyclone_name, override=None):
+    """
+    File name (without extension) for the output PNG.
+
+    Priority: `--name` on the command line, then [style] output_name in
+    config.ini, then the built-in "<Name>_Track".  Any "{name}" in the
+    template is replaced by the cyclone/invest name and a trailing ".png"
+    (if the user typed one) is dropped.
+    """
+    template = (override or OUTPUT_NAME or "{name}_Track").strip()
+    stem = template.replace("{name}", str(cyclone_name))
+    if stem.lower().endswith(".png"):
+        stem = stem[:-4]
+    return stem

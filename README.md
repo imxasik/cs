@@ -67,6 +67,9 @@ python main.py data/2025/montha.txt --buffer 2.5 --ucr 0.25
 python main.py data/95B.txt --show-ai          # force AI overlays on
 python main.py data/95B.txt --no-features      # skip the plugins
 python main.py data/95B.txt --dpi 200 -o /tmp  # custom DPI / output folder
+python main.py data/95B.txt -n 95B_ForecastTable   # custom PNG name
+python main.py data/95B.txt --full-track   # keep the whole observed
+                                           # track in frame as well
 python main.py --list                          # list data files and exit
 ```
 
@@ -82,6 +85,9 @@ Under `[plot]` you can set:
 - `minlat_offset`, `maxlat_offset` – fine tuning vertical zoom.
 - `output_dpi` – PNG resolution.
 - `organize_by_year` – save plots into `output/plots/<year>/`.
+- `full_track_extent` – `0` (default) zooms the map to the forecast track;
+  `1` zooms out far enough to keep the whole **observed** track in frame
+  too (the same as the `--full-track` command-line flag).
 
 Toggles (1 = ON, 0 = OFF):
 
@@ -118,6 +124,35 @@ Toggles (1 = ON, 0 = OFF):
 
   i.e. the centre is currently 450 km to the south-south-east of Puri.
 
+- `show_forecast_table` – the bottom-centre **forecast table**: one column
+  per forecast step between the port table and the movement table,
+
+  ```
+  Time (BST)   18/21SEP   06/22SEP   18/22SEP   ...
+  Speed (KM)   46KM/H     56KM/H     56KM/H     ...
+  ```
+
+  `Time` is the synoptic time shifted by `forecast_tz_offset` hours
+  (default **6** → BST; set it to `0` for UTC) in `DD/HHMMM` form. `Speed`
+  is the **forecast wind intensity in km/h** (1 kt = 1.852 km/h), so the
+  row always matches the knots printed on the forecast points:
+  `25KT → 46KM/H`, `30KT → 56KM/H`, `35KT → 65KM/H`. Set
+  `forecast_speed_mode = motion` in `[style]` if you would rather have the
+  storm's translation speed (great-circle distance from the previous track
+  point, the last observed fix for the first column, divided by the hours
+  between the two) shown there instead. If a file has more steps than
+  `forecast_table_max_cols` (default **8**), the steps in between are
+  dropped evenly so the columns stay readable (first and last are always
+  kept). The label texts and the unit come from `[style]`
+  (`forecast_time_label`, `forecast_speed_label`, `forecast_speed_unit`).
+
+- `show_forecast_key` – the key strip drawn directly on top of the
+  forecast table: `Uncertainty Cone | Forecast Track | Landfall Est.`,
+  left-aligned with the table and right-aligned with the movement table.
+  While it is on, those three entries are left out of the `INTENSITY
+  SCALE` legend on the right so nothing is listed twice; set it to `0` and
+  they move back into the legend.
+
 Numbers:
 
 - `approach_radius` – ports farther than this many km from the track are
@@ -126,11 +161,31 @@ Numbers:
   lists (default 4). When the forecast never reaches land there is no
   landfall to measure from, so the `approach_ports` ports the track comes
   closest to are listed instead.
+- `forecast_tz_offset` – hours added to the UTC synoptic times before the
+  forecast table prints them (default 6 = BST).
+- `forecast_table_max_cols` – most columns the forecast table may use
+  (default 8); extra steps are thinned out evenly.
+- `forecast_table_min_fontsize` – smallest font the forecast table and its
+  key strip may shrink to when the middle gap is narrow (default 6.8).
 
 Under `[style]`:
 
 - `date_format` – strftime format for title dates (default `%HZ, %d %b %Y`).
 - `footer_text` – right-hand footer text on the map.
+- `forecast_time_label`, `forecast_speed_label`, `forecast_speed_unit` –
+  first cells of the two forecast-table rows and the speed unit
+  (defaults `Time (BST)`, `Speed (KM)`, `KM/H`).
+- `forecast_speed_mode` – `wind` (default) puts the forecast wind in km/h
+  in the Speed row; `motion` puts the storm's translation speed there.
+- `output_name` – name of the output PNG, **without** `.png`. Empty (the
+  default) keeps the usual `<Name>_Track`. `{name}` is replaced by the
+  cyclone/invest name, so `output_name = {name}_Track_v2` saves 95B as
+  `95B_Track_v2.png`. The `-n/--name` command-line flag overrides it for a
+  single run:
+
+  ```bash
+  python main.py data/95B.txt -n 95B_ForecastTable
+  ```
 
 ## Pluggable features (features/ folder)
 
@@ -166,6 +221,16 @@ is placed inside the map, and the font is shrunk (down to ~6.5 pt) if
 needed. If a name were still too long it is shortened with `…`. So adding
 a long name such as `Krishnapatnam` can never push text outside the table
 box.
+
+### Bottom row: port table · forecast table · movement table
+
+The whole bottom row is aligned: the port table starts at the left edge,
+the forecast table fills the gap in the middle (its left edge follows the
+port table, its right edge follows the movement table) and its `Time` row
+lines up with the movement table's rows. The forecast table is built from
+the measured text extents too — it shrinks the font (down to
+`forecast_table_min_fontsize`) and stretches its columns to fill exactly
+the space between its two neighbours, so it can never run into them.
 
 ## Data format
 
