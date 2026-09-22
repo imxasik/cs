@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "projects": {
+    "/data/data/com.termux/files/home": {
+      "decision": "trusted"
+    }
+  }
+}
