@@ -512,6 +512,17 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     track_prev_lat = track_data_obs["Latitude"].iloc[0]
     track_prev_lon = track_data_obs["Longitude"].iloc[0]
 
+    # Wind-radius swatches: label -> (edge colour, swatch size).  The three
+    # rows are listed in the same ascending serial as the data columns
+    # (WindR24 -> WindR34 -> WindR64) and carry exactly the map colours:
+    # 24 KT blue, 34 KT red, 64 KT magenta, the widest circle for the
+    # lowest threshold.
+    WIND_RADIUS_SWATCH = {
+        "24 KT Wind": ('blue', 25),
+        "34 KT Wind": ('red', 20),
+        "64 KT Wind": ('magenta', 15),
+    }
+
     prev_conditions = [
         ("Invest Area / Low", 'lime', 'full'),
         ("Tropical Depression", 'steelblue', 'full'),
@@ -522,11 +533,11 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         ("Category 4", 'fuchsia', 'full'),
         ("Category 5", 'mediumpurple', 'full'),
         (" ", '', 'none'),
-        ("64 KT Wind Radius", 'white', 'none'),
+        ("24 KT Wind", 'white', 'none'),
         (" ", ' ', 'none'),
-        ("34 KT Wind Radius", 'white', 'none'),
+        ("34 KT Wind", 'white', 'none'),
         (" ", ' ', 'none'),
-        ("24 KT Wind Radius", 'white', 'none'),
+        ("64 KT Wind", 'white', 'none'),
         (" ", ' ', 'none')
     ]
 
@@ -534,16 +545,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         Line2D(
             [0], [0],
             marker='o',
-            color='w' if condition == " " else
-                   'magenta' if condition == "64 KT Wind Radius" else
-                   'red' if condition == "34 KT Wind Radius" else
-                   'blue' if condition == "24 KT Wind Radius" else
-                   'black',
+            color=('w' if condition == " "
+                   else WIND_RADIUS_SWATCH.get(condition, ('black', 8))[0]),
             markerfacecolor=color,
-            markersize=25 if condition == "24 KT Wind Radius" else
-                        20 if condition == "34 KT Wind Radius" else
-                        15 if condition == "64 KT Wind Radius" else
-                        8,
+            markersize=WIND_RADIUS_SWATCH.get(condition, (None, 8))[1],
             fillstyle=fillstyle,
             label=condition,
             lw=0
