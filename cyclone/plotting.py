@@ -225,7 +225,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     track_prev_lon = track_data_obs["Longitude"].iloc[0]
 
     prev_conditions = [
-        ("Invest Area (Low)", 'lime', 'full'),
+        ("Invest Area / Low", 'lime', 'full'),
         ("Tropical Depression", 'steelblue', 'full'),
         ("Cyclonic Storm", 'aqua', 'full'),
         ("Category 1", 'lemonchiffon', 'full'),
@@ -585,45 +585,46 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
   # -------------------- LEGEND --------------------
     if SHOW_LEGEND:
         # Keep the port-risk key separate from the long cyclone-status
-        # legend.  It is deliberately horizontal and anchored at the top of
-        # the map so the three marker colours can be read at a glance.
+        # legend.  This follows the reference layout: a compact, horizontal
+        # key at the top of the map with Low / Mod / High in that order.
         if SHOW_PORTS:
             port_risk_handles = [
                 Line2D(
                     [0], [0], marker='o', linestyle='None',
-                    markerfacecolor='#e53935', markeredgecolor='black',
-                    markeredgewidth=0.7, markersize=9,
-                    label='HIGH  <100 km',
+                    markerfacecolor='#22b957', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='Low Risk',
                 ),
                 Line2D(
                     [0], [0], marker='o', linestyle='None',
-                    markerfacecolor='#f39c12', markeredgecolor='black',
-                    markeredgewidth=0.7, markersize=9,
-                    label='MEDIUM  100–300 km',
+                    markerfacecolor='#ff9500', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='Mod Risk',
                 ),
                 Line2D(
                     [0], [0], marker='o', linestyle='None',
-                    markerfacecolor='#2eaa5b', markeredgecolor='black',
-                    markeredgewidth=0.7, markersize=9,
-                    label='LOW  >300 km',
+                    markerfacecolor='#e60000', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='High Risk',
                 ),
             ]
             port_risk_legend = ax.legend(
                 handles=port_risk_handles,
                 loc='upper center',
-                bbox_to_anchor=(0.50, 0.995),
+                bbox_to_anchor=(0.52, 0.995),
                 ncol=3,
-                title='PORT RISK',
-                fontsize=9,
-                title_fontsize=10,
+                fontsize=10,
                 frameon=True,
                 fancybox=True,
-                framealpha=0.94,
-                borderpad=0.55,
-                handletextpad=0.45,
-                columnspacing=1.15,
+                framealpha=0.96,
+                edgecolor='#cbd5e1',
+                borderpad=0.50,
+                handletextpad=0.50,
+                columnspacing=1.25,
             )
-            port_risk_legend.get_title().set_fontweight('bold')
+            for text in port_risk_legend.get_texts():
+                text.set_fontweight('bold')
+                text.set_color('#1f2937')
             port_risk_legend.set_zorder(10000)
             port_risk_legend.get_frame().set_zorder(10000)
             # A second ax.legend call below would otherwise replace it.
@@ -694,7 +695,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         legend = ax.legend(
             handles=legend_elements_prev,
             loc='upper right',
-            title='MAP LEGEND'
+            title='INTENSITY SCALE'
         )
         legend.get_title().set_fontweight('bold')
 
@@ -787,10 +788,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 plon,
                 plat,
                 marker='o',
-                s=28,
+                s=42,
                 color=risk["color"],
                 edgecolor='black',
-                linewidth=0.65,
+                linewidth=0.9,
                 zorder=6,
             )
 
@@ -817,16 +818,20 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 xytext=(0, dy_pt),
                 textcoords='offset points',
                 fontsize=10,
-                color=risk["color"],
+                fontweight='bold',
+                color='#111827',
                 ha='center',
                 va='bottom',
                 bbox=dict(
                     facecolor='white',
-                    alpha=0.6,
-                    boxstyle='round,pad=0.20',
-                    edgecolor='none'
+                    alpha=0.94,
+                    edgecolor=risk["color"],
+                    linewidth=1.8,
+                    boxstyle='round,pad=0.26',
                 ),
-                zorder=3
+                # Keep labels below the table layer so a port name can never
+                # cover the table when the auto-zoom includes southern ports.
+                zorder=5
             )
 
     # -------------------- MOVEMENT INFO --------------------
