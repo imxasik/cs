@@ -139,39 +139,6 @@ def _dist_point_seg_km(p, a, b):
     return hypot(px - cx, py - cy), t
 
 
-def _nearest_coast_point(lon, lat):
-    """
-    Nearest point on any COASTLINES polyline to (lon, lat).
-
-    Returns (dist_km, coast_index, seg_index, t) or None.
-    """
-    best = None
-    for ci, coast in enumerate(COASTLINES):
-        for j in range(len(coast) - 1):
-            d, t = _dist_point_seg_km((lon, lat), coast[j], coast[j + 1])
-            if best is None or d < best[0]:
-                best = (d, ci, j, t)
-    return best
-
-
-def _coast_tangent_at(lon, lat):
-    """
-    Unit vector (dx, dy) along the nearest coastline at (lon, lat), pointing
-    in the direction the polyline was digitised. Used to decide which side
-    of a landfall point a port lies on. Returns None if unavailable.
-    """
-    near = _nearest_coast_point(lon, lat)
-    if near is None:
-        return None
-    _, ci, j, _t = near
-    a, b = COASTLINES[ci][j], COASTLINES[ci][j + 1]
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    norm = hypot(dx, dy)
-    if norm == 0:
-        return None
-    return (dx / norm, dy / norm)
-
-
 def format_track_time(ts):
     """Timestamp -> compact 'DD/HHZ' label used across the plot."""
     return pd.Timestamp(ts).strftime("%d/%HZ")
@@ -351,27 +318,6 @@ def _per_port_approaches(track_obs, track_for, ports, radius_km=800.0):
     return results
 
 
-def _side_of(port, ref_lon, ref_lat, tangent):
-    """
-    +1 / -1 telling on which side of the landfall point a port lies: further
-    along the coast in the tangent direction (+1) or back the other way
-    (-1). This is the "two sides of the landfall" split used to pick the
-    ports for the table.
-    """
-    if tangent is None:
-        return 0
-    # Work in a local km plane around the reference point so latitude
-    # dependent longitude scaling is accounted for.
-    kx = 111.320 * cos(radians(ref_lat))
-    tx, ty = tangent[0] * kx, tangent[1] * 110.574
-    vx = (port["plon"] - ref_lon) * kx
-    vy = (port["plat"] - ref_lat) * 110.574
-    along = tx * vx + ty * vy
-    if abs(along) < 1e-9:
-        return 1
-    return 1 if along > 0 else -1
-
-
 def closest_approaches(track_obs, track_for, ports,
                        radius_km=800.0, top=8):
     """
@@ -407,24 +353,21 @@ def closest_approaches(track_obs, track_for, ports,
     return results[:top]
 
 
-def port_centre_table(track_obs, track_for, ports, landfall=None,
-                      radius_km=800.0, per_side=4):
+def port_centre_table(track_obs, track_for, ports,
+                      radius_km=800.0, top=4):
     """
     The single merged port table used on the map.
 
-    Ports are *selected* by closest approach to the track — the nearest
-    `per_side` ports on each side of the landfall point (or simply the
-    `2 * per_side` closest ports when the forecast never reaches land) —
-    but the numbers shown are for RIGHT NOW: how far the current storm
-    centre is from each port and in which direction it lies from that port.
+    Ports are *selected* by closest approach to the track (the `top` ports
+    the observed + forecast track comes nearest to), but the numbers shown
+    are for RIGHT NOW: how far the current storm centre is from each port
+    and in which direction it lies from that port.
 
     Returns a list of dicts sorted by current distance:
         name         : port name
         dist_km      : distance from the port to the *current* centre (km)
         bearing      : degrees (0-360) from the port to the current centre
         dir_str      : 16-point cardinal of `bearing` ('SSE', ...)
-        side         : +1 / -1 — which side of the landfall the port lies
-                       on along the coast (0 when there is no landfall)
         approach_km  : closest approach distance of the track (km)
         time         : pandas.Timestamp of the closest approach
         time_str     : 'DD/HHZ'
@@ -437,36 +380,7 @@ def port_centre_table(track_obs, track_for, ports, landfall=None,
 
     # Closest to the approach first (that is the selection criterion)
     candidates.sort(key=lambda r: r["approach_km"])
-
-    limit = max(1, int(per_side)) * 2
-    # Split the closest ports over the two sides of the landfall point,
-    # measured along the coast. Without a landfall there is no "two sides"
-    # to speak of, so the closest ports to the approach are simply listed.
-    tangent = None
-    if landfall is not None:
-        tangent = _coast_tangent_at(landfall["lon"], landfall["lat"])
-
-    if tangent is None:
-        chosen = candidates[:limit]
-        for r in chosen:
-            r["side"] = 0
-    else:
-        ref_lon, ref_lat = landfall["lon"], landfall["lat"]
-        for r in candidates:
-            r["side"] = _side_of(r, ref_lon, ref_lat, tangent)
-
-        plus = [r for r in candidates if r["side"] >= 0][:per_side]
-        minus = [r for r in candidates if r["side"] < 0][:per_side]
-        chosen = plus + minus
-        # One side short of ports? Top up with the next closest ones so the
-        # table never ends up half empty.
-        if len(chosen) < limit:
-            picked = {r["name"] for r in chosen}
-            for r in candidates:
-                if len(chosen) >= limit:
-                    break
-                if r["name"] not in picked:
-                    chosen.append(r)
+    chosen = candidates[:max(1, int(top))]
 
     rows = []
     for r in chosen:
@@ -477,7 +391,6 @@ def port_centre_table(track_obs, track_for, ports, landfall=None,
             "dist_km": int(round(dist)),
             "bearing": round(bearing, 1),
             "dir_str": get_cardinal_direction(bearing),
-            "side": r["side"],
             "approach_km": r["approach_km"],
             "time": r["time"],
             "time_str": r["time_str"],

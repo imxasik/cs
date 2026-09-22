@@ -103,10 +103,10 @@ Toggles (1 = ON, 0 = OFF):
   left / up-left / above / bottom-right if that would collide with a
   forecast time label).
 - `show_approach_table` – the port table. Ports are *selected* by closest
-  approach to the track — the nearest `approach_per_side` ports on each
-  side of the landfall point (along the coast) — and the table then shows
-  the situation **right now**: how far the current storm centre is from
-  each of those ports and in which direction it lies, e.g.
+  approach to the track — the `approach_ports` ports the track comes
+  nearest to — and the table then shows the situation **right now**: how
+  far the current storm centre is from each of those ports and in which
+  direction it lies, e.g.
 
   ```
   PORT        DIS      DIR
@@ -114,15 +114,13 @@ Toggles (1 = ON, 0 = OFF):
   ```
 
   i.e. the centre is currently 450 km to the south-south-east of Puri.
-  When the forecast never reaches land there are no "two sides", so the
-  `2 x approach_per_side` ports closest to the approach are listed instead.
 
 Numbers:
 
 - `approach_radius` – ports farther than this many km from the track are
   skipped in the port table (default 800).
-- `approach_per_side` – how many of the closest ports to take on each side
-  of the landfall (default 4 -> up to 8 rows).
+- `approach_ports` – how many of the closest ports the table lists
+  (default 4).
 
 Under `[style]`:
 
