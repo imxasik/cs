@@ -353,48 +353,80 @@ def closest_approaches(track_obs, track_for, ports,
     return results[:top]
 
 
-def port_centre_table(track_obs, track_for, ports,
+def port_centre_table(track_obs, track_for, ports, landfall=None,
                       radius_km=800.0, top=4):
     """
     The single merged port table used on the map.
 
-    Ports are *selected* by closest approach to the track (the `top` ports
-    the observed + forecast track comes nearest to), but the numbers shown
-    are for RIGHT NOW: how far the current storm centre is from each port
-    and in which direction it lies from that port.
+    Port selection: the `top` ports closest to the *landfall point* when a
+    landfall was estimated (that is the place the storm is heading for),
+    otherwise the `top` ports the track comes closest to.
 
-    Returns a list of dicts sorted by current distance:
+    The numbers shown are for RIGHT NOW: how far the current storm centre
+    is from each of those ports and in which direction it lies from that
+    port. Rows are ordered by that distance, nearest first.
+
+    Returns a list of dicts:
         name         : port name
         dist_km      : distance from the port to the *current* centre (km)
         bearing      : degrees (0-360) from the port to the current centre
         dir_str      : 16-point cardinal of `bearing` ('SSE', ...)
+        landfall_km  : distance from the port to the landfall point (km,
+                       None when there is no landfall estimate)
         approach_km  : closest approach distance of the track (km)
         time         : pandas.Timestamp of the closest approach
         time_str     : 'DD/HHZ'
         past         : True when the closest approach already happened
     """
     centre = current_centre(track_obs, track_for)
-    candidates = _per_port_approaches(track_obs, track_for, ports, radius_km)
-    if not centre or not candidates:
+    if not centre or not ports:
         return []
 
-    # Closest to the approach first (that is the selection criterion)
-    candidates.sort(key=lambda r: r["approach_km"])
-    chosen = candidates[:max(1, int(top))]
+    limit = max(1, int(top))
+
+    if landfall is not None:
+        # Heading for a landfall: take the ports sitting closest to the
+        # point where the storm is expected to come ashore.
+        lf_coord = (landfall["lat"], landfall["lon"])
+        ranked = sorted(
+            ((name, haversine(coord, lf_coord))
+             for name, coord in ports.items()),
+            key=lambda kv: kv[1],
+        )
+        within = [name for name, d in ranked if d <= radius_km]
+        # Ports that far out are rare; top the table up so it is never
+        # half empty.
+        chosen_names = (within if len(within) >= limit else [n for n, _ in ranked])[:limit]
+        chosen = {n: ports[n] for n in chosen_names}
+    else:
+        # No landfall: keep the old behaviour, the ports the track comes
+        # closest to.
+        cands = _per_port_approaches(track_obs, track_for, ports, radius_km)
+        cands.sort(key=lambda r: r["approach_km"])
+        chosen = {r["name"]: ports[r["name"]] for r in cands[:limit]}
+
+    # Track-approach numbers for the selected ports only (cheap) so the
+    # returned dicts keep the same shape either way.
+    info = {r["name"]: r for r in
+            _per_port_approaches(track_obs, track_for, chosen,
+                                 radius_km=float("inf"))}
 
     rows = []
-    for r in chosen:
-        dist = haversine((r["plat"], r["plon"]), centre)
-        bearing = get_bearing((r["plat"], r["plon"]), centre)
+    for name, (plat, plon) in chosen.items():
+        dist = haversine((plat, plon), centre)
+        bearing = get_bearing((plat, plon), centre)
+        appr = info.get(name)
         rows.append({
-            "name": r["name"],
+            "name": name,
             "dist_km": int(round(dist)),
             "bearing": round(bearing, 1),
             "dir_str": get_cardinal_direction(bearing),
-            "approach_km": r["approach_km"],
-            "time": r["time"],
-            "time_str": r["time_str"],
-            "past": r["past"],
+            "landfall_km": (int(round(haversine((plat, plon), lf_coord)))
+                            if landfall is not None else None),
+            "approach_km": appr["approach_km"] if appr else None,
+            "time": appr["time"] if appr else None,
+            "time_str": appr["time_str"] if appr else None,
+            "past": appr["past"] if appr else None,
         })
 
     rows.sort(key=lambda r: r["dist_km"])

@@ -390,11 +390,12 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                     print("[LANDFALL] No landfall detected within the forecast period.")
 
             if SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
-                # One merged table: the ports the track comes closest to,
-                # showing the distance & direction of the *current* centre
-                # from each of those ports.
+                # One merged table: the ports closest to the landfall
+                # point (or to the track when there is no landfall), showing
+                # the distance & direction of the *current* centre from each.
                 approach_rows = port_centre_table(
                     track_data_obs, track_data_for, BOB(),
+                    landfall=landfall_info,
                     radius_km=APPROACH_RADIUS,
                     top=APPROACH_PORTS,
                 )
@@ -657,18 +658,24 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     forecast_end_time = track_data_for['tnd'].iloc[-1].strftime(DATE_FORMAT)
 
     # -------------------- PORT TABLE (merged) --------------------
-    # Ports are chosen by closest approach to the track (the closest
-    # APPROACH_PORTS of them), but the table answers the "right now"
-    # question: how far is the current centre from each port and which way.
+    # Ports are chosen as the APPROACH_PORTS closest to the landfall point
+    # (closest to the track if there is no landfall), but the table answers
+    # the "right now" question: how far is the current centre from each
+    # port and in which direction.
     if (SHOW_APPROACH_TABLE or SHOW_PORT_TABLE) and approach_rows:
         table_rows = [
             [r["name"], f"{r['dist_km']} km", r["dir_str"]]
             for r in approach_rows
         ]
         _centre = current_centre(track_data_obs, track_data_for)
-        _caption = "DISTANCE FROM CURRENT CENTRE"
-        if _centre is not None:
-            _caption += f" ({_centre[0]:.1f}N, {_centre[1]:.1f}E)"
+        _where = (f" ({_centre[0]:.1f}N, {_centre[1]:.1f}E)"
+                  if _centre is not None else "")
+        if landfall_info is not None:
+            _caption = (f"{len(table_rows)} PORTS NEAREST LANDFALL"
+                        f" \u00b7 DIST FROM CURRENT CENTRE{_where}")
+        else:
+            _caption = (f"{len(table_rows)} PORTS NEAREST THE TRACK"
+                        f" \u00b7 DIST FROM CURRENT CENTRE{_where}")
         _add_dynamic_table(
             ax,
             ["PORT", "DIS", "DIR"],
