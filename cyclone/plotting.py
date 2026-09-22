@@ -16,12 +16,13 @@ from .config import (
     SHOW_MOVEMENT_TABLE, SHOW_ACE_BOX, SHOW_MAX_WIND_BOXES,
     SHOW_FOOTER, SHOW_AI_POSITION, SHOW_BIAS_TRACK,
     SHOW_LANDFALL, SHOW_APPROACH_TABLE, APPROACH_RADIUS,
+    APPROACH_PER_SIDE,
     DATE_FORMAT, FOOTER_TEXT,
 )
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction
 from .ace import calculate_ace
-from .landfall import find_landfall, closest_approaches, format_track_time
+from .landfall import find_landfall, port_centre_table, current_centre
 from .ports import BOB
 from features.ailoc import predict_landfall_latlon
 from features.aibc import apply_simple_bias
@@ -54,6 +55,143 @@ def wind_cat(w):
         if w >= thr:
             return name
     return "LOW"
+
+
+# --------------------------------------------------------------------------
+# Dynamic table sizing
+# --------------------------------------------------------------------------
+# Extra headroom on top of the measured glyph width: TextPath gives the ink
+# extent, while the renderer also counts side bearings / advance width. The
+# small safety factor keeps text comfortably inside its cell.
+_TEXT_SAFETY = 1.05
+
+
+def _text_width_pt(text, fontsize, weight="normal"):
+    """
+    Width of `text` in points, measured from the actual font glyphs (no
+    canvas draw needed) plus a small safety margin. Falls back to a
+    character-count estimate.
+    """
+    text = str(text)
+    try:
+        from matplotlib.font_manager import FontProperties
+        from matplotlib.textpath import TextPath
+        fp = FontProperties(family="sans-serif", weight=weight, size=fontsize)
+        ink = float(TextPath((0, 0), text, prop=fp).get_extents().width)
+        return ink * _TEXT_SAFETY
+    except Exception:
+        return 0.62 * fontsize * len(text)
+
+
+def _fit_text(text, max_width_pt, fontsize, weight="normal"):
+    """
+    Shorten `text` with an ellipsis until it fits `max_width_pt`, so a very
+    long name can never stick out of its table cell.
+    """
+    text = str(text)
+    if _text_width_pt(text, fontsize, weight) <= max_width_pt or not text:
+        return text
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _text_width_pt(text[:mid] + "\u2026", fontsize, weight) <= max_width_pt:
+            lo = mid
+        else:
+            hi = mid - 1
+    return (text[:lo] + "\u2026") if lo else "\u2026"
+
+
+def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
+                       min_fontsize=6.5, x=0.005, y=0.045,
+                       max_width_frac=0.34, cell_pad_frac=0.45,
+                       row_height_frac=1.9, caption=None, zorder=7):
+    """
+    Draw a matplotlib table whose box is sized from the real text extents,
+    so long cell contents (e.g. "Krishnapatnam", "Mawlamyine") can never
+    spill outside the table box.
+
+    The font is first shrunk (down to `min_fontsize`) to keep the table
+    within `max_width_frac` of the axes; if it is *still* too wide, the
+    longest cells are ellipsised. Either way the table stays inside its
+    box and the box stays inside the map.
+
+    Returns (table, bbox) where bbox is [x, y, w, h] in axes fractions.
+    """
+    fig = ax.figure
+    dpi = fig.dpi
+    ax_pos = ax.get_position()
+    ax_w_px = max(1.0, ax_pos.width * fig.get_figwidth() * dpi)
+    ax_h_px = max(1.0, ax_pos.height * fig.get_figheight() * dpi)
+
+    pt_to_px = dpi / 72.0
+    n_cols = len(col_labels)
+    limit_px = max_width_frac * ax_w_px
+    rows = [[str(c) for c in row] for row in rows]
+
+    def pack(fs, pad_px):
+        """Column widths in px needed by the current text at font size fs."""
+        widths = []
+        for c in range(n_cols):
+            w = _text_width_pt(col_labels[c], fs, weight="bold")
+            for row in rows:
+                w = max(w, _text_width_pt(row[c], fs))
+            widths.append(w * pt_to_px + 2.0 * pad_px)
+        return widths
+
+    # 1) shrink the font to fit the width budget
+    pad_px = cell_pad_frac * fontsize * pt_to_px
+    cols_px = pack(fontsize, pad_px)
+    total_px = sum(cols_px)
+    if total_px > limit_px and total_px > 0:
+        fontsize = max(min_fontsize, fontsize * (limit_px / total_px))
+        pad_px = cell_pad_frac * fontsize * pt_to_px
+        cols_px = pack(fontsize, pad_px)
+        total_px = sum(cols_px)
+
+    # 2) still too wide -> ellipsise the cells to their column budget
+    if total_px > limit_px:
+        share = [c * (limit_px / total_px) for c in cols_px]
+        budget_pt = [(w - 2.0 * pad_px) / pt_to_px for w in share]
+        col_labels = [_fit_text(lbl, budget_pt[c], fontsize, "bold")
+                      for c, lbl in enumerate(col_labels)]
+        rows = [[_fit_text(cell, budget_pt[c], fontsize)
+                 for c, cell in enumerate(row)] for row in rows]
+        cols_px = pack(fontsize, pad_px)
+        total_px = min(sum(cols_px), limit_px)
+
+    row_h_px = fontsize * row_height_frac * pt_to_px
+    bbox = [x, y, total_px / ax_w_px,
+            (row_h_px * (len(rows) + 1)) / ax_h_px]
+
+    table = ax.table(
+        cellText=rows,
+        colLabels=col_labels,
+        cellLoc='center',
+        colColours=['#f0f0f0'] * n_cols,
+        zorder=zorder,
+        bbox=bbox,
+        colWidths=[c / total_px for c in cols_px],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(fontsize)
+    for (r, _c), cell in table.get_celld().items():
+        cell.set_linewidth(0.7)
+        cell.PAD = 0.06
+        if r == 0:
+            cell.set_text_props(fontweight='bold')
+
+    if caption:
+        ax.text(
+            x, y + bbox[3] + 0.006, caption,
+            transform=ax.transAxes,
+            fontsize=max(min_fontsize, fontsize - 1.0),
+            fontweight='bold', ha='left', va='bottom',
+            bbox=dict(facecolor='white', alpha=0.65, edgecolor='none',
+                      boxstyle='round,pad=0.25'),
+            zorder=zorder,
+        )
+
+    return table, bbox
 
 
 def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
@@ -235,11 +373,11 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         )
 
 
-    # ------- LANDFALL ESTIMATE & PORT APPROACHES --------
+    # ------- LANDFALL ESTIMATE & PORT TABLE --------
     landfall_info = None
     approach_rows = []
 
-    if SHOW_LANDFALL or SHOW_APPROACH_TABLE:
+    if SHOW_LANDFALL or SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
         try:
             if SHOW_LANDFALL:
                 landfall_info = find_landfall(track_data_obs, track_data_for, BOB())
@@ -252,18 +390,25 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 else:
                     print("[LANDFALL] No landfall detected within the forecast period.")
 
-            if SHOW_APPROACH_TABLE:
-                approach_rows = closest_approaches(
+            if SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
+                # One merged table: ports picked by closest approach to the
+                # track (nearest 4 on each side of the landfall), showing the
+                # distance & direction of the *current* centre from the port.
+                approach_rows = port_centre_table(
                     track_data_obs, track_data_for, BOB(),
+                    landfall=landfall_info,
                     radius_km=APPROACH_RADIUS,
+                    per_side=APPROACH_PER_SIDE,
                 )
                 if approach_rows:
+                    centre = current_centre(track_data_obs, track_data_for)
+                    where = (f"({centre[0]:.1f}N, {centre[1]:.1f}E)"
+                             if centre else "(unknown)")
                     tops = " | ".join(
-                        f"{r['name']} {r['dist_km']} km {r['dir_str']} "
-                        f"@ {r['time_str']}"
-                        for r in approach_rows[:3]
+                        f"{r['name']} {r['dist_km']} km {r['dir_str']}"
+                        for r in approach_rows
                     )
-                    print(f"[APPROACH] Closest: {tops}")
+                    print(f"[PORTS] From current centre {where}: {tops}")
         except Exception as e:
             print(f"[WARN] Landfall/approach estimate failed: {e}")
 
@@ -513,46 +658,33 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     forecast_start_time = track_data_for['tnd'].iloc[0].strftime(DATE_FORMAT)
     forecast_end_time = track_data_for['tnd'].iloc[-1].strftime(DATE_FORMAT)
 
-    # -------------------- PORTS & DISTANCES --------------------
-    City = BOB()
-    locations = City
-    obs = (prev_lat, prev_lon)
-
-    header = ["Port Distance(km)"]
-    table_data = []
-    visible_cities = []
-
-    if SHOW_PORTS or SHOW_PORT_TABLE:
-        for location, coord in locations.items():
-            plat, plon = coord
-            if lat_min <= plat <= lat_max and lon_min <= plon <= lon_max:
-                dis = haversine(coord, obs)
-                bear = get_bearing(coord, obs)
-                dirc = get_cardinal_direction(bear)
-                table_data.append([f"{location}: {int(dis)}, {dirc}"])
-                visible_cities.append((location, plat, plon))
-
-    if SHOW_PORT_TABLE and table_data:
-        # When the closest-approach table is also shown, keep this one above it
-        _pt_y = 0.30 if (SHOW_APPROACH_TABLE and approach_rows) else 0.045
-        table = ax.table(
-            cellText=table_data,
-            loc='left',
-            colLabels=header,
-            cellLoc='center',
-            colColours=['#f0f0f0'],
-            zorder=7,
-            bbox=[0.005, _pt_y, 0.22, 0.12]
+    # -------------------- PORT TABLE (merged) --------------------
+    # Ports are chosen by closest approach to the track (nearest 4 on each
+    # side of the landfall), but the table answers the "right now" question:
+    # how far is the current centre from each port and in which direction.
+    if (SHOW_APPROACH_TABLE or SHOW_PORT_TABLE) and approach_rows:
+        table_rows = [
+            [r["name"], f"{r['dist_km']} km", r["dir_str"]]
+            for r in approach_rows
+        ]
+        _centre = current_centre(track_data_obs, track_data_for)
+        _caption = "DISTANCE FROM CURRENT CENTRE"
+        if _centre is not None:
+            _caption += f" ({_centre[0]:.1f}N, {_centre[1]:.1f}E)"
+        _add_dynamic_table(
+            ax,
+            ["PORT", "DIS", "DIR"],
+            table_rows,
+            fontsize=10.0,
+            x=0.005, y=0.045,
+            max_width_frac=0.30,
+            row_height_frac=1.85,
+            caption=_caption,
         )
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.auto_set_column_width([0])
-        table[0, 0].set_text_props(fontweight='bold')
-        table.scale(1, 1.5)
-    elif SHOW_PORT_TABLE:
+    elif SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
         ax.text(
             0.01, 0.05,
-            "No ports in view",
+            "No ports within approach range",
             transform=ax.transAxes,
             fontsize=8,
             va="bottom", ha="left",
@@ -560,42 +692,12 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             zorder=7
         )
 
-    # -------------------- CLOSEST APPROACH TABLE --------------------
-    if SHOW_APPROACH_TABLE and approach_rows:
-        shown = approach_rows[:5]
-        appr_header = ["PORT", "MIN DIST", "DIR"]
-        appr_data = [
-            [f"{r['name']}{'*' if r['past'] else ''}",
-             f"{r['dist_km']} km", r["dir_str"]]
-            for r in shown
-        ]
-
-        appr_table = ax.table(
-            cellText=appr_data,
-            loc='left',
-            colLabels=appr_header,
-            cellLoc='center',
-            colColours=['#f0f0f0', '#f0f0f0', '#f0f0f0'],
-            zorder=7,
-            bbox=[0.005, 0.045, 0.24, 0.05 + 0.035 * len(shown)]
-        )
-        appr_table.auto_set_font_size(False)
-        appr_table.set_fontsize(8)
-        appr_table.auto_set_column_width([0, 1, 2])
-        for (_r, _c), cell in appr_table.get_celld().items():
-            if _r == 0:
-                cell.set_text_props(fontweight='bold')
-        appr_table.scale(1, 1.3)
-
-        if any(r["past"] for r in shown):
-            ax.text(
-                0.005, 0.038,
-                "* closest approach already passed",
-                transform=ax.transAxes,
-                fontsize=6.5, color='#444444',
-                va="top", ha="left",
-                zorder=7
-            )
+    # -------------------- PORT MARKERS & LABELS --------------------
+    visible_cities = []
+    if SHOW_PORTS:
+        for location, (plat, plon) in BOB().items():
+            if lat_min <= plat <= lat_max and lon_min <= plon <= lon_max:
+                visible_cities.append((location, plat, plon))
 
     if SHOW_PORTS:
         # City labels: centered above marker + overlap control

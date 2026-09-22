@@ -495,12 +495,12 @@ def run_feature(context: dict):
 
     if approaches:
         text_lines.append("")
-        text_lines.append("Closest Approach (min distance, direction & time):")
-        for r in approaches[:3]:
-            when = f"at {r['time_str']}" + (" (passed)" if r["past"] else "")
+        text_lines.append(
+            "Ports closest to the approach - distance & direction of the "
+            "current centre:")
+        for r in approaches:
             text_lines.append(
-                f"  {r['name']}: {r['dist_km']} km "
-                f"{r.get('dir_str', '-')} {when}")
+                f"  {r['name']}: {r['dist_km']} km {r.get('dir_str', '-')}")
 
     # PDF output only
     summary_pdf_path = output_dir / f"{cyclone_name}_summary.pdf"
