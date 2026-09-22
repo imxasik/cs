@@ -1,7 +1,0 @@
-# Core plotting stack (already listed in assets/requirements.txt —
-# this root-level file is the standard place tools like pip look for).
-matplotlib>=3.5
-numpy>=1.21
-pandas>=1.3
-scipy>=1.7
-reportlab>=3.6
