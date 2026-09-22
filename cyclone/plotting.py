@@ -15,8 +15,7 @@ from .config import (
     SHOW_CONE, SHOW_LEGEND, SHOW_PORTS, SHOW_PORT_TABLE,
     SHOW_MOVEMENT_TABLE, SHOW_ACE_BOX, SHOW_MAX_WIND_BOXES,
     SHOW_FOOTER, SHOW_AI_POSITION, SHOW_BIAS_TRACK,
-    SHOW_LANDFALL, SHOW_APPROACH_TABLE, APPROACH_RADIUS,
-    APPROACH_PER_SIDE,
+    SHOW_LANDFALL, SHOW_APPROACH_TABLE, APPROACH_RADIUS, APPROACH_PORTS,
     DATE_FORMAT, FOOTER_TEXT,
 )
 from .cone import create_nhc_cone
@@ -391,14 +390,13 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                     print("[LANDFALL] No landfall detected within the forecast period.")
 
             if SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
-                # One merged table: ports picked by closest approach to the
-                # track (nearest 4 on each side of the landfall), showing the
-                # distance & direction of the *current* centre from the port.
+                # One merged table: the ports the track comes closest to,
+                # showing the distance & direction of the *current* centre
+                # from each of those ports.
                 approach_rows = port_centre_table(
                     track_data_obs, track_data_for, BOB(),
-                    landfall=landfall_info,
                     radius_km=APPROACH_RADIUS,
-                    per_side=APPROACH_PER_SIDE,
+                    top=APPROACH_PORTS,
                 )
                 if approach_rows:
                     centre = current_centre(track_data_obs, track_data_for)
@@ -659,9 +657,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     forecast_end_time = track_data_for['tnd'].iloc[-1].strftime(DATE_FORMAT)
 
     # -------------------- PORT TABLE (merged) --------------------
-    # Ports are chosen by closest approach to the track (nearest 4 on each
-    # side of the landfall), but the table answers the "right now" question:
-    # how far is the current centre from each port and in which direction.
+    # Ports are chosen by closest approach to the track (the closest
+    # APPROACH_PORTS of them), but the table answers the "right now"
+    # question: how far is the current centre from each port and which way.
     if (SHOW_APPROACH_TABLE or SHOW_PORT_TABLE) and approach_rows:
         table_rows = [
             [r["name"], f"{r['dist_km']} km", r["dir_str"]]
