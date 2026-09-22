@@ -21,7 +21,12 @@ from .config import (
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction
 from .ace import calculate_ace
-from .landfall import find_landfall, port_centre_table, current_centre
+from .landfall import (
+    find_landfall,
+    port_centre_table,
+    current_centre,
+    classify_port_risk,
+)
 from .ports import BOB
 from features.ailoc import predict_landfall_latlon
 from features.aibc import apply_simple_bias
@@ -376,10 +381,13 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     landfall_info = None
     approach_rows = []
 
-    if SHOW_LANDFALL or SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
+    # Port colours are also driven by the landfall estimate, so calculate it
+    # whenever ports are visible (not only when the landfall X is enabled).
+    if SHOW_LANDFALL or SHOW_PORTS or SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
         try:
+            landfall_info = find_landfall(track_data_obs, track_data_for, BOB())
+
             if SHOW_LANDFALL:
-                landfall_info = find_landfall(track_data_obs, track_data_for, BOB())
                 if landfall_info is not None:
                     where = (f"near {landfall_info['place']}"
                              if landfall_info['place']
@@ -576,7 +584,51 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
   # -------------------- LEGEND --------------------
     if SHOW_LEGEND:
-    
+        # Keep the port-risk key separate from the long cyclone-status
+        # legend.  It is deliberately horizontal and anchored at the top of
+        # the map so the three marker colours can be read at a glance.
+        if SHOW_PORTS:
+            port_risk_handles = [
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#e53935', markeredgecolor='black',
+                    markeredgewidth=0.7, markersize=9,
+                    label='HIGH  <100 km',
+                ),
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#f39c12', markeredgecolor='black',
+                    markeredgewidth=0.7, markersize=9,
+                    label='MEDIUM  100–300 km',
+                ),
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#2eaa5b', markeredgecolor='black',
+                    markeredgewidth=0.7, markersize=9,
+                    label='LOW  >300 km',
+                ),
+            ]
+            port_risk_legend = ax.legend(
+                handles=port_risk_handles,
+                loc='upper center',
+                bbox_to_anchor=(0.50, 0.995),
+                ncol=3,
+                title='PORT RISK',
+                fontsize=9,
+                title_fontsize=10,
+                frameon=True,
+                fancybox=True,
+                framealpha=0.94,
+                borderpad=0.55,
+                handletextpad=0.45,
+                columnspacing=1.15,
+            )
+            port_risk_legend.get_title().set_fontweight('bold')
+            port_risk_legend.set_zorder(10000)
+            port_risk_legend.get_frame().set_zorder(10000)
+            # A second ax.legend call below would otherwise replace it.
+            ax.add_artist(port_risk_legend)
+
     # Bias-corrected track (dashed magenta)
         if SHOW_BIAS_TRACK:
           legend_elements_prev.append(
@@ -698,11 +750,26 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         )
 
     # -------------------- PORT MARKERS & LABELS --------------------
+    # Every visible port gets a colour based on its distance to the estimated
+    # landfall, rather than the current centre or the closest forecast point.
+    # This keeps the map markers and the PORT RISK legend consistent.
     visible_cities = []
     if SHOW_PORTS:
         for location, (plat, plon) in BOB().items():
             if lat_min <= plat <= lat_max and lon_min <= plon <= lon_max:
-                visible_cities.append((location, plat, plon))
+                if landfall_info is not None:
+                    landfall_distance = haversine(
+                        (plat, plon),
+                        (landfall_info["lat"], landfall_info["lon"]),
+                    )
+                else:
+                    landfall_distance = None
+                visible_cities.append((
+                    location,
+                    plat,
+                    plon,
+                    classify_port_risk(landfall_distance),
+                ))
 
     if SHOW_PORTS:
         # City labels: centered above marker + overlap control
@@ -713,8 +780,19 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         dy_pt_base = 10
         city_min_dist_px = 18
 
-        for city, plat, plon in visible_cities:
-            ax.scatter(plon, plat, marker='o', s=14, color='red', zorder=2)
+        for city, plat, plon, risk in visible_cities:
+            # Larger, outlined dots keep the risk colour visible over both
+            # the pale land and blue ocean parts of Map.png.
+            ax.scatter(
+                plon,
+                plat,
+                marker='o',
+                s=28,
+                color=risk["color"],
+                edgecolor='black',
+                linewidth=0.65,
+                zorder=6,
+            )
 
             base_disp = ax.transData.transform((plon, plat))
 
@@ -739,7 +817,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 xytext=(0, dy_pt),
                 textcoords='offset points',
                 fontsize=10,
-                color='red',
+                color=risk["color"],
                 ha='center',
                 va='bottom',
                 bbox=dict(

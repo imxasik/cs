@@ -10,7 +10,7 @@ estimate *where and when* a forecast track first reaches the coast, but it
 is NOT a navigational dataset.
 """
 
-from math import cos, sin, radians, degrees, atan2, hypot, sqrt
+from math import cos, sin, radians, degrees, atan2, hypot, sqrt, isfinite
 
 import pandas as pd
 
@@ -261,6 +261,82 @@ def current_centre(track_obs, track_for=None):
     if not pts:
         return None
     return (pts[-1][2], pts[-1][1])
+
+
+# Port-risk thresholds are deliberately distance based so the marker colours
+# answer one clear question: how close is this port to the estimated landfall?
+# The bands match the map legend drawn by cyclone.plotting.
+PORT_RISK_BANDS = (
+    {
+        "key": "high",
+        "label": "HIGH RISK",
+        "legend": "<100 km",
+        "color": "#e53935",       # red
+        "min_km": 0.0,
+        "max_km": 100.0,
+    },
+    {
+        "key": "medium",
+        "label": "MEDIUM RISK",
+        "legend": "100–300 km",
+        "color": "#f39c12",       # orange
+        "min_km": 100.0,
+        "max_km": 300.0,
+    },
+    {
+        "key": "low",
+        "label": "LOW RISK",
+        "legend": ">300 km",
+        "color": "#2eaa5b",       # green
+        "min_km": 300.0,
+        "max_km": float("inf"),
+    },
+)
+
+
+def classify_port_risk(distance_km):
+    """Return the display band for a port's distance from landfall.
+
+    Distances are in kilometres.  Exactly 100 km is in the orange band and
+    exactly 300 km is in the orange band; only distances strictly below 100 km
+    are red, as requested for the high-risk cutoff.
+
+    ``None``/non-finite distances are returned as an explicit unknown band so
+    a map can never silently show a port as safe when no landfall exists.
+    """
+    try:
+        distance = float(distance_km)
+    except (TypeError, ValueError):
+        distance = float("nan")
+
+    if not isfinite(distance):
+        return {
+            "key": "unknown",
+            "label": "UNKNOWN",
+            "legend": "No landfall",
+            "color": "#9e9e9e",
+            "distance_km": None,
+        }
+
+    # Negative values are not meaningful, but clamping makes this helper safe
+    # for callers that work with rounded/projected geometry.
+    distance = max(0.0, distance)
+    for band in PORT_RISK_BANDS:
+        if band["key"] == "high":
+            matches = distance < band["max_km"]
+        elif band["key"] == "medium":
+            matches = distance <= band["max_km"]
+        else:
+            matches = distance > band["min_km"]
+        if matches:
+            result = dict(band)
+            result["distance_km"] = distance
+            return result
+
+    # The final band has an infinite upper bound, so this is defensive only.
+    result = dict(PORT_RISK_BANDS[-1])
+    result["distance_km"] = distance
+    return result
 
 
 def _per_port_approaches(track_obs, track_for, ports, radius_km=800.0):
