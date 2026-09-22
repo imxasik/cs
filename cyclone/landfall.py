@@ -271,7 +271,7 @@ PORT_RISK_BANDS = (
         "key": "high",
         "label": "HIGH RISK",
         "legend": "<100 km",
-        "color": "#e53935",       # red
+        "color": "#e60000",       # red
         "min_km": 0.0,
         "max_km": 100.0,
     },
@@ -279,7 +279,7 @@ PORT_RISK_BANDS = (
         "key": "medium",
         "label": "MEDIUM RISK",
         "legend": "100–300 km",
-        "color": "#f39c12",       # orange
+        "color": "#ff9500",       # orange
         "min_km": 100.0,
         "max_km": 300.0,
     },
@@ -287,7 +287,7 @@ PORT_RISK_BANDS = (
         "key": "low",
         "label": "LOW RISK",
         "legend": ">300 km",
-        "color": "#2eaa5b",       # green
+        "color": "#22b957",       # green
         "min_km": 300.0,
         "max_km": float("inf"),
     },
