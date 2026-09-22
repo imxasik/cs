@@ -207,7 +207,7 @@ def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
 # --------------------------------------------------------------------------
 def forecast_table_steps(track_obs, track_for, mode="wind", tz_offset_hours=6.0):
     """
-    (time, value) for every forecast step, ready for the "Speed (KM)" row.
+    (time, value) for every forecast step, ready for the "গতি (কিমি)" row.
 
     mode="wind" (default)
         The forecast wind intensity converted to km/h (1 kt = 1.852 km/h),
@@ -892,8 +892,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         _where = (f" ({_centre[0]:.1f}N, {_centre[1]:.1f}E)"
                   if _centre is not None else "")
         if landfall_info is not None:
-            _caption = (f"{len(table_rows)} PORTS NEAREST LANDFALL"
-                        f" \u00b7 DIST FROM CURRENT CENTRE{_where}")
+            _caption = (f"{len(table_rows)} NEAREST PORT STATIONS\n"
+                        f" \u00b7 CENTRE{_where}")
         else:
             _caption = (f"{len(table_rows)} PORTS NEAREST THE TRACK"
                         f" \u00b7 DIST FROM CURRENT CENTRE{_where}")
@@ -1237,9 +1237,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         if SHOW_FORECAST_KEY and forecast_table_bbox is not None:
             key_items = []
             if SHOW_CONE and n_forecast >= 1:
-                key_items.append(("cone", "Uncertainty Cone"))
+                key_items.append(("cone", "Uncertainty"))
             if fc_track_lon is not None:
-                key_items.append(("track", "Forecast Track"))
+                key_items.append(("track", "Forecast"))
             if SHOW_LANDFALL and landfall_info is not None:
                 key_items.append(("landfall", "Landfall Est."))
 
@@ -1472,7 +1472,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     if SHOW_FOOTER:
         for x, ha, t in [
             (0.01, "left",
-             f"WIND: {ci}KT | PRESSURE: {pressure}MB | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
+             f"WIND: {ci}KTS | PRESSURE: {pressure}HPA | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
             (0.99, "right", FOOTER_TEXT),
         ]:
             ax.text(
