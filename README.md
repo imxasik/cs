@@ -67,6 +67,9 @@ python main.py data/2025/montha.txt --buffer 2.5 --ucr 0.25
 python main.py data/95B.txt --show-ai          # force AI overlays on
 python main.py data/95B.txt --no-features      # skip the plugins
 python main.py data/95B.txt --dpi 200 -o /tmp  # custom DPI / output folder
+python main.py data/95B.txt -n 95B_ForecastTable   # custom PNG name
+python main.py data/95B.txt --full-track   # keep the whole observed
+                                           # track in frame as well
 python main.py --list                          # list data files and exit
 ```
 
@@ -82,6 +85,9 @@ Under `[plot]` you can set:
 - `minlat_offset`, `maxlat_offset` – fine tuning vertical zoom.
 - `output_dpi` – PNG resolution.
 - `organize_by_year` – save plots into `output/plots/<year>/`.
+- `full_track_extent` – `0` (default) zooms the map to the forecast track;
+  `1` zooms out far enough to keep the whole **observed** track in frame
+  too (the same as the `--full-track` command-line flag).
 
 Toggles (1 = ON, 0 = OFF):
 
@@ -128,9 +134,13 @@ Toggles (1 = ON, 0 = OFF):
 
   `Time` is the synoptic time shifted by `forecast_tz_offset` hours
   (default **6** → BST; set it to `0` for UTC) in `DD/HHMMM` form. `Speed`
-  is the translation speed — the great-circle distance from the previous
-  track point (the last observed fix for the first column) divided by the
-  hours between the two. If a file has more steps than
+  is the **forecast wind intensity in km/h** (1 kt = 1.852 km/h), so the
+  row always matches the knots printed on the forecast points:
+  `25KT → 46KM/H`, `30KT → 56KM/H`, `35KT → 65KM/H`. Set
+  `forecast_speed_mode = motion` in `[style]` if you would rather have the
+  storm's translation speed (great-circle distance from the previous track
+  point, the last observed fix for the first column, divided by the hours
+  between the two) shown there instead. If a file has more steps than
   `forecast_table_max_cols` (default **8**), the steps in between are
   dropped evenly so the columns stay readable (first and last are always
   kept). The label texts and the unit come from `[style]`
@@ -165,6 +175,17 @@ Under `[style]`:
 - `forecast_time_label`, `forecast_speed_label`, `forecast_speed_unit` –
   first cells of the two forecast-table rows and the speed unit
   (defaults `Time (BST)`, `Speed (KM)`, `KM/H`).
+- `forecast_speed_mode` – `wind` (default) puts the forecast wind in km/h
+  in the Speed row; `motion` puts the storm's translation speed there.
+- `output_name` – name of the output PNG, **without** `.png`. Empty (the
+  default) keeps the usual `<Name>_Track`. `{name}` is replaced by the
+  cyclone/invest name, so `output_name = {name}_Track_v2` saves 95B as
+  `95B_Track_v2.png`. The `-n/--name` command-line flag overrides it for a
+  single run:
+
+  ```bash
+  python main.py data/95B.txt -n 95B_ForecastTable
+  ```
 
 ## Pluggable features (features/ folder)
 

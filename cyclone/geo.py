@@ -1,5 +1,9 @@
 from math import atan2, cos, sin, radians, degrees
 
+# 1 knot = 1.852 km/h exactly, used to print wind speeds in km/h
+KNOTS_TO_KMH = 1.852
+
+
 def haversine(coord1, coord2):
     lat1, lon1 = radians(coord1[0]), radians(coord1[1])
     lat2, lon2 = radians(coord2[0]), radians(coord2[1])
