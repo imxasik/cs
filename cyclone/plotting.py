@@ -21,7 +21,12 @@ from .config import (
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction
 from .ace import calculate_ace
-from .landfall import find_landfall, port_centre_table, current_centre
+from .landfall import (
+    find_landfall,
+    port_centre_table,
+    current_centre,
+    classify_port_risk,
+)
 from .ports import BOB
 from features.ailoc import predict_landfall_latlon
 from features.aibc import apply_simple_bias
@@ -220,7 +225,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     track_prev_lon = track_data_obs["Longitude"].iloc[0]
 
     prev_conditions = [
-        ("Invest Area (Low)", 'lime', 'full'),
+        ("Invest Area / Low", 'lime', 'full'),
         ("Tropical Depression", 'steelblue', 'full'),
         ("Cyclonic Storm", 'aqua', 'full'),
         ("Category 1", 'lemonchiffon', 'full'),
@@ -376,10 +381,13 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     landfall_info = None
     approach_rows = []
 
-    if SHOW_LANDFALL or SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
+    # Port colours are also driven by the landfall estimate, so calculate it
+    # whenever ports are visible (not only when the landfall X is enabled).
+    if SHOW_LANDFALL or SHOW_PORTS or SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
         try:
+            landfall_info = find_landfall(track_data_obs, track_data_for, BOB())
+
             if SHOW_LANDFALL:
-                landfall_info = find_landfall(track_data_obs, track_data_for, BOB())
                 if landfall_info is not None:
                     where = (f"near {landfall_info['place']}"
                              if landfall_info['place']
@@ -576,7 +584,52 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
   # -------------------- LEGEND --------------------
     if SHOW_LEGEND:
-    
+        # Keep the port-risk key separate from the long cyclone-status
+        # legend.  This follows the reference layout: a compact, horizontal
+        # key at the top of the map with Low / Mod / High in that order.
+        if SHOW_PORTS:
+            port_risk_handles = [
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#22b957', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='Low Risk',
+                ),
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#ff9500', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='Mod Risk',
+                ),
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#e60000', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='High Risk',
+                ),
+            ]
+            port_risk_legend = ax.legend(
+                handles=port_risk_handles,
+                loc='upper center',
+                bbox_to_anchor=(0.52, 0.995),
+                ncol=3,
+                fontsize=10,
+                frameon=True,
+                fancybox=True,
+                framealpha=0.96,
+                edgecolor='#cbd5e1',
+                borderpad=0.50,
+                handletextpad=0.50,
+                columnspacing=1.25,
+            )
+            for text in port_risk_legend.get_texts():
+                text.set_fontweight('bold')
+                text.set_color('#1f2937')
+            port_risk_legend.set_zorder(10000)
+            port_risk_legend.get_frame().set_zorder(10000)
+            # A second ax.legend call below would otherwise replace it.
+            ax.add_artist(port_risk_legend)
+
     # Bias-corrected track (dashed magenta)
         if SHOW_BIAS_TRACK:
           legend_elements_prev.append(
@@ -642,7 +695,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         legend = ax.legend(
             handles=legend_elements_prev,
             loc='upper right',
-            title='MAP LEGEND'
+            title='INTENSITY SCALE'
         )
         legend.get_title().set_fontweight('bold')
 
@@ -698,57 +751,166 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         )
 
     # -------------------- PORT MARKERS & LABELS --------------------
+    # Every visible port gets a colour based on its distance to the estimated
+    # landfall, rather than the current centre or the closest forecast point.
+    # This keeps the map markers and the PORT RISK legend consistent.
     visible_cities = []
     if SHOW_PORTS:
         for location, (plat, plon) in BOB().items():
             if lat_min <= plat <= lat_max and lon_min <= plon <= lon_max:
-                visible_cities.append((location, plat, plon))
+                if landfall_info is not None:
+                    landfall_distance = haversine(
+                        (plat, plon),
+                        (landfall_info["lat"], landfall_info["lon"]),
+                    )
+                else:
+                    landfall_distance = None
+                visible_cities.append((
+                    location,
+                    plat,
+                    plon,
+                    classify_port_risk(landfall_distance),
+                ))
 
     if SHOW_PORTS:
-        # City labels: centered above marker + overlap control
-        city_label_positions = []
+        # City labels use real screen-space rectangles, not just marker-centre
+        # distances.  That matters for neighbouring ports such as Balasore,
+        # Digha and Contai, whose names have very different widths.
+        city_label_bboxes = []
         fig = ax.figure
         dpi = fig.dpi
+        label_fontsize = 10.0
+        pt_to_px = dpi / 72.0
+        label_pad_pt = 0.26 * label_fontsize + 2.0
+        label_height_pt = label_fontsize * 1.25 + 2.0 * label_pad_pt
 
-        dy_pt_base = 10
-        city_min_dist_px = 18
+        # Keep every label in its normal position above its marker. If that
+        # fixed position collides with another label, suppress the label but
+        # keep its risk-coloured marker visible; no label is moved around the
+        # map.
+        label_candidates = [
+            (0, 10, 'center', 'bottom'),
+        ]
 
-        for city, plat, plon in visible_cities:
-            ax.scatter(plon, plat, marker='o', s=14, color='red', zorder=2)
+        def label_bbox(base_disp, dx_pt, dy_pt, ha, va, width_pt):
+            """Approximate an annotation's padded bbox in display pixels."""
+            anchor = base_disp + np.array([
+                dx_pt * pt_to_px,
+                dy_pt * pt_to_px,
+            ])
+            width_px = (width_pt + 2.0 * label_pad_pt) * pt_to_px
+            height_px = label_height_pt * pt_to_px
+
+            if ha == 'left':
+                x0, x1 = anchor[0], anchor[0] + width_px
+            elif ha == 'right':
+                x0, x1 = anchor[0] - width_px, anchor[0]
+            else:
+                x0, x1 = anchor[0] - width_px / 2.0, anchor[0] + width_px / 2.0
+
+            if va == 'bottom':
+                y0, y1 = anchor[1], anchor[1] + height_px
+            elif va == 'top':
+                y0, y1 = anchor[1] - height_px, anchor[1]
+            else:
+                y0, y1 = anchor[1] - height_px / 2.0, anchor[1] + height_px / 2.0
+            return (x0, y0, x1, y1)
+
+        def boxes_overlap(box_a, box_b, gap_px=3.0):
+            return not (
+                box_a[2] + gap_px <= box_b[0]
+                or box_b[2] + gap_px <= box_a[0]
+                or box_a[3] + gap_px <= box_b[1]
+                or box_b[3] + gap_px <= box_a[1]
+            )
+
+        # For the remaining special coastal label, retain the marker but hide
+        # only the text when landfall is directly over the port (<100 km) or
+        # that port is the closest one to the estimated landfall.
+        hidden_near_landfall_ports = set()
+        if landfall_info is not None:
+            landfall_coord = (landfall_info["lat"], landfall_info["lon"])
+            all_landfall_distances = {
+                name: haversine((plat, plon), landfall_coord)
+                for name, (plat, plon) in BOB().items()
+            }
+            closest_landfall_distance = min(all_landfall_distances.values())
+            special_ports = {"Chandbali"}
+            hidden_near_landfall_ports = {
+                name for name in special_ports
+                if (
+                    all_landfall_distances[name] < 100.0
+                    or np.isclose(
+                        all_landfall_distances[name],
+                        closest_landfall_distance,
+                        atol=1e-6,
+                    )
+                )
+            }
+
+        axes_bbox = ax.bbox
+        for city, plat, plon, risk in visible_cities:
+            # Larger, outlined dots keep the risk colour visible over both
+            # the pale land and blue ocean parts of Map.png.
+            ax.scatter(
+                plon,
+                plat,
+                marker='o',
+                s=42,
+                color=risk["color"],
+                edgecolor='black',
+                linewidth=0.9,
+                zorder=6,
+            )
+
+            if city in hidden_near_landfall_ports:
+                continue
 
             base_disp = ax.transData.transform((plon, plat))
+            width_pt = _text_width_pt(city, label_fontsize, weight='bold')
+            chosen = None
 
-            dy_pt = dy_pt_base
-            dy_px = dy_pt * dpi / 72.0
-            label_disp = base_disp + np.array([0, dy_px])
+            for dx_pt, dy_pt, ha, va in label_candidates:
+                bbox = label_bbox(base_disp, dx_pt, dy_pt, ha, va, width_pt)
+                inside_axes = (
+                    bbox[0] >= axes_bbox.x0
+                    and bbox[1] >= axes_bbox.y0
+                    and bbox[2] <= axes_bbox.x1
+                    and bbox[3] <= axes_bbox.y1
+                )
+                if inside_axes and not any(
+                    boxes_overlap(bbox, previous)
+                    for previous in city_label_bboxes
+                ):
+                    chosen = (dx_pt, dy_pt, ha, va, bbox)
+                    break
 
-            if any(
-                np.hypot(label_disp[0] - x, label_disp[1] - y) < city_min_dist_px
-                for (x, y) in city_label_positions
-            ):
-                dy_pt = dy_pt_base + 6
-                dy_px = dy_pt * dpi / 72.0
-                label_disp = base_disp + np.array([0, dy_px])
+            if chosen is None:
+                continue
 
-            city_label_positions.append((label_disp[0], label_disp[1]))
-
+            dx_pt, dy_pt, ha, va, bbox = chosen
+            city_label_bboxes.append(bbox)
             ax.annotate(
                 city,
                 xy=(plon, plat),
                 xycoords='data',
-                xytext=(0, dy_pt),
+                xytext=(dx_pt, dy_pt),
                 textcoords='offset points',
-                fontsize=10,
-                color='red',
-                ha='center',
-                va='bottom',
+                fontsize=label_fontsize,
+                fontweight='bold',
+                color='#111827',
+                ha=ha,
+                va=va,
                 bbox=dict(
                     facecolor='white',
-                    alpha=0.6,
-                    boxstyle='round,pad=0.20',
-                    edgecolor='none'
+                    alpha=0.94,
+                    edgecolor=risk["color"],
+                    linewidth=1.8,
+                    boxstyle='round,pad=0.26',
                 ),
-                zorder=3
+                # Track, wind radii and forecast labels stay in front of the
+                # port label, so the forecast remains readable underneath.
+                zorder=2,
             )
 
     # -------------------- MOVEMENT INFO --------------------

@@ -87,7 +87,10 @@ Toggles (1 = ON, 0 = OFF):
 
 - `show_cone` – draw the uncertainty cone or not.
 - `show_legend` – show/hide legend.
-- `show_ports` – draw port markers.
+- `show_ports` – draw port markers. When an estimated landfall is available,
+  each port marker is risk-coloured by distance to that landfall: red/high
+  for `<100 km`, orange/medium for `100–300 km`, and green/low for `>300 km`.
+  The `PORT RISK` key is placed horizontally at the top of the map.
 - `show_port_table` / `show_approach_table` – both toggles show the *same*
   single port table (they are aliases, kept so older config.ini files keep
   working); set both to 0 to hide it.
