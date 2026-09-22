@@ -45,8 +45,8 @@ STYLE_DEFAULTS = {
     "theme": "xp",                       # reserved for future themes
     "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
     "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
-    "forecast_time_label": "Time (BST)",   # first cell of the forecast table
-    "forecast_speed_label": "Speed (KM)",  # first cell of the speed row
+    "forecast_time_label": "TIME (BST)",   # first cell of the forecast table
+    "forecast_speed_label": "WIND (KM)",  # first cell of the speed row
     "forecast_speed_unit": "KM/H",         # appended to every speed cell
     # What the "Speed" row shows:
     #   wind   - the forecast wind intensity in km/h (knots x 1.852), so the

@@ -360,9 +360,8 @@ def _add_fill_table(ax, col_labels, rows, *, x0, x1, y, fontsize=10.0,
     for (r, c), cell in table.get_celld().items():
         cell.set_linewidth(0.7)
         cell.PAD = 0.06
-        if r == 0 or c == 0:
-            cell.set_text_props(fontweight='bold')
-
+        cell.set_text_props(fontweight='bold')
+        #if r == 0 or c == 0:
     return table, bbox
 
 
@@ -947,7 +946,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         city_label_bboxes = []
         fig = ax.figure
         dpi = fig.dpi
-        label_fontsize = 10.0
+        label_fontsize = 8
         pt_to_px = dpi / 72.0
         label_pad_pt = 0.26 * label_fontsize + 2.0
         label_height_pt = label_fontsize * 1.25 + 2.0 * label_pad_pt
@@ -1222,9 +1221,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                     [speed_row],
                     x0=forecast_x0, x1=forecast_x1,
                     y=0.045,
-                    fontsize=10.0,
+                    fontsize=12.0,
                     min_fontsize=FORECAST_TABLE_MIN_FONTSIZE,
-                    row_height_frac=1.9,
+                    row_height_frac=3,
                 )
             else:
                 print("[WARN] No room for the forecast table between the "
@@ -1472,7 +1471,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     if SHOW_FOOTER:
         for x, ha, t in [
             (0.01, "left",
-             f"WIND: {ci}KTS | PRESSURE: {pressure}HPA | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
+             f"WIND: {ci} KTS | PRESSURE: {pressure} HPA | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
             (0.99, "right", FOOTER_TEXT),
         ]:
             ax.text(
