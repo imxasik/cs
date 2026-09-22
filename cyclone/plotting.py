@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon, Patch
+from matplotlib.patches import Polygon, Patch, Rectangle
 from matplotlib.lines import Line2D
 
 from .config import (
@@ -16,7 +16,10 @@ from .config import (
     SHOW_MOVEMENT_TABLE, SHOW_ACE_BOX, SHOW_MAX_WIND_BOXES,
     SHOW_FOOTER, SHOW_AI_POSITION, SHOW_BIAS_TRACK,
     SHOW_LANDFALL, SHOW_APPROACH_TABLE, APPROACH_RADIUS, APPROACH_PORTS,
+    SHOW_FORECAST_TABLE, SHOW_FORECAST_KEY,
+    FORECAST_TZ_OFFSET, FORECAST_TABLE_MAX_COLS, FORECAST_TABLE_MIN_FONTSIZE,
     DATE_FORMAT, FOOTER_TEXT,
+    FORECAST_TIME_LABEL, FORECAST_SPEED_LABEL, FORECAST_SPEED_UNIT,
 )
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction
@@ -196,6 +199,257 @@ def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
         )
 
     return table, bbox
+
+
+# --------------------------------------------------------------------------
+# Bottom-centre forecast table (Time / Speed) and its map-key strip
+# --------------------------------------------------------------------------
+def forecast_step_speeds(track_obs, track_for, tz_offset_hours=6.0):
+    """
+    Translation speed (km/h) of the storm at every forecast step.
+
+    The speed of a step is the great-circle distance from the previous
+    track point (the last *observed* fix for the first step) divided by the
+    hours between the two, which is the usual "how fast is it moving" value
+    printed on forecast tables.
+
+    Times are shifted by `tz_offset_hours` (6 h -> BST) so the table can be
+    read in local time.
+    """
+    steps = []
+    if track_for is None or len(track_for) == 0:
+        return steps
+
+    import pandas as _pd
+
+    prev = None
+    if track_obs is not None and len(track_obs):
+        prev = (float(track_obs["Latitude"].iloc[-1]),
+                float(track_obs["Longitude"].iloc[-1]),
+                track_obs["tnd"].iloc[-1])
+
+    for i in range(len(track_for)):
+        lat = float(track_for["Latitude"].iloc[i])
+        lon = float(track_for["Longitude"].iloc[i])
+        when = track_for["tnd"].iloc[i]
+
+        speed = None
+        if prev is not None:
+            hours = (when - prev[2]).total_seconds() / 3600.0
+            if hours > 0:
+                speed = haversine((prev[0], prev[1]), (lat, lon)) / hours
+
+        steps.append((when + _pd.Timedelta(hours=tz_offset_hours), speed))
+        prev = (lat, lon, when)
+
+    return steps
+
+
+def thin_steps(steps, max_cols):
+    """
+    Evenly drop steps when a file has more forecast steps than fit, so the
+    columns stay readable.  The first and the last step are always kept and
+    the ones in between are spread as evenly as possible: 20 steps in 8
+    columns keep 1, 4, 6, 9, 12, 15, 17 and 20.
+    """
+    n = len(steps)
+    if not max_cols or max_cols < 2 or n <= max_cols:
+        return list(steps)
+
+    k = int(max_cols)
+    keep = []
+    for j in range(k):
+        i = int(round(j * (n - 1) / (k - 1)))
+        i = min(n - 1, max(0, i))
+        if i not in keep:
+            keep.append(i)
+    if keep[-1] != n - 1:
+        keep[-1] = n - 1
+    return [steps[i] for i in keep]
+
+
+def _add_fill_table(ax, col_labels, rows, *, x0, x1, y, fontsize=10.0,
+                    min_fontsize=6.5, row_height_frac=1.9,
+                    cell_pad_frac=0.35, zorder=7):
+    """
+    Table that spans exactly x0..x1 of the axes - it lines up with the port
+    table on its left and the movement table on its right - and grows
+    upwards from `y`.
+
+    Column widths come from the measured text extents, so the table always
+    fits between its neighbours: the font is shrunk (down to
+    `min_fontsize`) when the content needs more room than the gap provides,
+    and the columns are stretched when it needs less (which is what makes
+    the cells as wide and airy as the ones in the reference layout).
+
+    Returns (table, bbox) with bbox = [x, y, w, h] in axes fractions.
+    """
+    fig = ax.figure
+    ax_pos = ax.get_position()
+    ax_w_pt = max(1.0, ax_pos.width * fig.get_figwidth() * 72.0)
+    ax_h_pt = max(1.0, ax_pos.height * fig.get_figheight() * 72.0)
+
+    width_frac = max(1e-6, x1 - x0)
+    limit_pt = width_frac * ax_w_pt
+    n_cols = len(col_labels)
+    rows = [[str(c) for c in row] for row in rows]
+
+    def pack(fs):
+        """Column widths (pt) needed by the text at font size fs."""
+        pad = cell_pad_frac * fs
+        widths = []
+        for c in range(n_cols):
+            w = _text_width_pt(col_labels[c], fs, weight="bold")
+            for row in rows:
+                w = max(w, _text_width_pt(row[c], fs,
+                                          weight="bold" if c == 0 else "normal"))
+            widths.append(w + 2.0 * pad)
+        return widths
+
+    fs = float(fontsize)
+    cols_pt = pack(fs)
+    total_pt = sum(cols_pt)
+
+    # 1) shrink the font until the content fits the gap
+    if total_pt > limit_pt > 0:
+        fs = max(float(min_fontsize), fs * (limit_pt / total_pt))
+        cols_pt = pack(fs)
+        total_pt = sum(cols_pt)
+
+    # 2) stretch the columns so the table fills the gap exactly
+    scale = limit_pt / max(total_pt, 1e-9)
+    cols_pt = [c * scale for c in cols_pt]
+    total_pt = sum(cols_pt)
+
+    row_h_frac = (fs * row_height_frac) / ax_h_pt
+    bbox = [x0, y, width_frac, row_h_frac * (len(rows) + 1)]
+
+    table = ax.table(
+        cellText=rows,
+        colLabels=col_labels,
+        cellLoc='center',
+        colColours=['#f0f0f0'] * n_cols,
+        zorder=zorder,
+        bbox=bbox,
+        colWidths=[c / total_pt for c in cols_pt],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(fs)
+    for (r, c), cell in table.get_celld().items():
+        cell.set_linewidth(0.7)
+        cell.PAD = 0.06
+        if r == 0 or c == 0:
+            cell.set_text_props(fontweight='bold')
+
+    return table, bbox
+
+
+# Map-key swatches: (kind, label, swatch width in pt)
+KEY_KINDS = {
+    "cone": 22.0,       # uncertainty cone: light grey filled box
+    "track": 22.0,      # forecast track: solid magenta line
+    "bias": 22.0,       # bias-corrected track: dashed magenta line
+    "landfall": 14.0,   # landfall estimate: red X
+}
+
+
+def _add_key_strip(ax, items, *, x0, x1, y, fontsize=10.0, min_fontsize=6.5,
+                   row_height_frac=1.9, gap_pt=6.0, cell_pad_frac=0.35,
+                   zorder=7):
+    """
+    One-row key strip ("Uncertainty Cone | Forecast Track | Landfall Est.")
+    drawn straight above the forecast table, sharing its left/right edges.
+
+    `items` is a list of (kind, label) pairs, kind being a key of KEY_KINDS.
+    The boxes are plain rectangles so the strip matches the other tables,
+    and the swatches are real artists, so they look exactly like what is on
+    the map.
+
+    Returns bbox = [x, y, w, h] in axes fractions.
+    """
+    if not items:
+        return None
+
+    fig = ax.figure
+    ax_pos = ax.get_position()
+    ax_w_pt = max(1.0, ax_pos.width * fig.get_figwidth() * 72.0)
+    ax_h_pt = max(1.0, ax_pos.height * fig.get_figheight() * 72.0)
+    w_frac = 1.0 / ax_w_pt          # axes fraction per point, x
+    h_frac = 1.0 / ax_h_pt          # axes fraction per point, y
+
+    width_frac = max(1e-6, x1 - x0)
+    limit_pt = width_frac * ax_w_pt
+    row_h_frac = (fontsize * row_height_frac) / ax_h_pt
+
+    def pack(fs):
+        pad = cell_pad_frac * fs
+        return [pad + KEY_KINDS[kind] + gap_pt
+                + _text_width_pt(label, fs, weight="bold") + pad
+                for kind, label in items]
+
+    cols_pt = pack(fontsize)
+    total_pt = sum(cols_pt)
+    if total_pt > limit_pt > 0:
+        fontsize = max(float(min_fontsize), fontsize * (limit_pt / total_pt))
+        cols_pt = pack(fontsize)
+        total_pt = sum(cols_pt)
+    scale = limit_pt / max(total_pt, 1e-9)
+    cols_pt = [c * scale for c in cols_pt]
+
+    pad_pt = cell_pad_frac * fontsize
+    y_center = y + row_h_frac / 2.0
+    x_cur = x0
+
+    for (kind, label), col_pt in zip(items, cols_pt):
+        col_frac = col_pt * w_frac
+        # cell box
+        ax.add_patch(Rectangle(
+            (x_cur, y), col_frac, row_h_frac,
+            transform=ax.transAxes, clip_on=False,
+            facecolor='white', edgecolor='black', linewidth=0.7,
+            zorder=zorder,
+        ))
+
+        sw_w = KEY_KINDS[kind]
+        sw_x = x_cur + pad_pt * w_frac
+        sw_x2 = sw_x + sw_w * w_frac
+
+        if kind == "cone":
+            sw_h = max(6.0, fontsize * 0.85)
+            ax.add_patch(Rectangle(
+                (sw_x, y_center - sw_h * h_frac / 2.0),
+                sw_w * w_frac, sw_h * h_frac,
+                transform=ax.transAxes, clip_on=False,
+                facecolor='lightgray', edgecolor='gray',
+                alpha=0.85, linewidth=1.0, zorder=zorder + 1,
+            ))
+        elif kind in ("track", "bias"):
+            ax.plot(
+                [sw_x, sw_x2], [y_center, y_center],
+                transform=ax.transAxes, clip_on=False,
+                color='magenta', linewidth=2.5 if kind == "track" else 1.5,
+                linestyle='-' if kind == "track" else '--',
+                alpha=1.0 if kind == "track" else 0.7,
+                zorder=zorder + 1,
+            )
+        elif kind == "landfall":
+            ax.plot(
+                [sw_x + sw_w * w_frac / 2.0], [y_center],
+                transform=ax.transAxes, clip_on=False,
+                marker='X', markersize=9, markeredgecolor='k',
+                markerfacecolor='red', linestyle='none',
+                zorder=zorder + 1,
+            )
+
+        ax.text(
+            sw_x2 + gap_pt * w_frac, y_center, label,
+            transform=ax.transAxes, clip_on=False,
+            fontsize=fontsize, fontweight='bold',
+            ha='left', va='center', zorder=zorder + 1,
+        )
+        x_cur += col_frac
+
+    return [x0, y, width_frac, row_h_frac]
 
 
 def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
@@ -582,128 +836,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             zorder=10
         )
 
-  # -------------------- LEGEND --------------------
-    if SHOW_LEGEND:
-        # Keep the port-risk key separate from the long cyclone-status
-        # legend.  This follows the reference layout: a compact, horizontal
-        # key at the top of the map with Low / Mod / High in that order.
-        if SHOW_PORTS:
-            port_risk_handles = [
-                Line2D(
-                    [0], [0], marker='o', linestyle='None',
-                    markerfacecolor='#22b957', markeredgecolor='black',
-                    markeredgewidth=0.8, markersize=9,
-                    label='Low Risk',
-                ),
-                Line2D(
-                    [0], [0], marker='o', linestyle='None',
-                    markerfacecolor='#ff9500', markeredgecolor='black',
-                    markeredgewidth=0.8, markersize=9,
-                    label='Mod Risk',
-                ),
-                Line2D(
-                    [0], [0], marker='o', linestyle='None',
-                    markerfacecolor='#e60000', markeredgecolor='black',
-                    markeredgewidth=0.8, markersize=9,
-                    label='High Risk',
-                ),
-            ]
-            port_risk_legend = ax.legend(
-                handles=port_risk_handles,
-                loc='upper center',
-                bbox_to_anchor=(0.52, 0.995),
-                ncol=3,
-                fontsize=10,
-                frameon=True,
-                fancybox=True,
-                framealpha=0.96,
-                edgecolor='#cbd5e1',
-                borderpad=0.50,
-                handletextpad=0.50,
-                columnspacing=1.25,
-            )
-            for text in port_risk_legend.get_texts():
-                text.set_fontweight('bold')
-                text.set_color('#1f2937')
-            port_risk_legend.set_zorder(10000)
-            port_risk_legend.get_frame().set_zorder(10000)
-            # A second ax.legend call below would otherwise replace it.
-            ax.add_artist(port_risk_legend)
-
-    # Bias-corrected track (dashed magenta)
-        if SHOW_BIAS_TRACK:
-          legend_elements_prev.append(
-            Line2D(
-                [0], [0],
-                linestyle='--',
-                color='magenta',
-                lw=1.5,
-                label='AI-BC Track'
-            )
-        )
-            
-        # Forecast track (solid magenta)
-        legend_elements_prev.append(
-            Line2D(
-                [0], [0],
-                linestyle='-',
-                color='magenta',
-                lw=2.0,
-                label='Forecast Track'
-            )
-        )
-    
-        # Cone (if shown)
-        if SHOW_CONE and n_forecast >= 1:
-            legend_elements_prev.append(
-                Patch(
-                    facecolor='lightgray',
-                    edgecolor='gray',
-                    alpha=0.3,
-                    label='Uncertainty Cone'
-                )
-            )
-
-   # Insert AI Position right after Category 5
-        if SHOW_AI_POSITION:
-            legend_elements_prev.insert(
-                8,
-                Line2D(
-                    [0], [0],
-                    marker='*',
-                    color='k',
-                    markerfacecolor='yellow',
-                    markersize=12,
-                    lw=0,
-                    label='AI Position'
-                )
-            )
-
-        if SHOW_LANDFALL and landfall_info is not None:
-            legend_elements_prev.append(
-                Line2D(
-                    [0], [0],
-                    marker='X',
-                    color='k',
-                    markerfacecolor='red',
-                    markersize=9,
-                    lw=0,
-                    label='Landfall Est.'
-                )
-            )
-
-        legend = ax.legend(
-            handles=legend_elements_prev,
-            loc='upper right',
-            title='INTENSITY SCALE'
-        )
-        legend.get_title().set_fontweight('bold')
-
-  # Make sure legend is above all plotted data
-        legend.set_zorder(9999)
-        legend.get_frame().set_zorder(9999)
-        
-
     # -------------------- TIME STRINGS --------------------
     observed_start_time = track_data_obs['tnd'].iloc[0].strftime(DATE_FORMAT)
     observed_end_time = track_data_obs['tnd'].iloc[-1].strftime(DATE_FORMAT)
@@ -715,6 +847,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     # (closest to the track if there is no landfall), but the table answers
     # the "right now" question: how far is the current centre from each
     # port and in which direction.
+    port_table_bbox = None
     if (SHOW_APPROACH_TABLE or SHOW_PORT_TABLE) and approach_rows:
         table_rows = [
             [r["name"], f"{r['dist_km']} km", r["dir_str"]]
@@ -729,7 +862,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         else:
             _caption = (f"{len(table_rows)} PORTS NEAREST THE TRACK"
                         f" \u00b7 DIST FROM CURRENT CENTRE{_where}")
-        _add_dynamic_table(
+        _port_table, port_table_bbox = _add_dynamic_table(
             ax,
             ["PORT", "DIS", "DIR"],
             table_rows,
@@ -1010,6 +1143,206 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         table2.auto_set_column_width([0])
         table2[0, 0].set_text_props(fontweight='bold')
         table2.scale(1, 1.8)
+
+    # ------------- FORECAST TABLE (bottom centre) -------------
+    # Sits in the free strip between the port table (left) and the movement
+    # table (right), bottom-aligned with both of them and just above the
+    # footer bar - the same slot as the reference layout.
+    forecast_table_bbox = None
+    key_strip_bbox = None
+
+    if SHOW_FORECAST_TABLE and len(track_data_for) >= 1:
+        steps = thin_steps(
+            forecast_step_speeds(
+                track_data_obs, track_data_for,
+                tz_offset_hours=FORECAST_TZ_OFFSET,
+            ),
+            FORECAST_TABLE_MAX_COLS,
+        )
+
+        if steps:
+            col_labels = [FORECAST_TIME_LABEL]
+            col_labels += [t.strftime("%H/%d%b").upper() for t, _s in steps]
+
+            speed_row = [FORECAST_SPEED_LABEL]
+            speed_row += [
+                "--" if s is None else f"{int(round(s))}{FORECAST_SPEED_UNIT}"
+                for _t, s in steps
+            ]
+
+            # left edge: just right of the port table (or the reference
+            # position when there is no port table)
+            if port_table_bbox is not None:
+                forecast_x0 = port_table_bbox[0] + port_table_bbox[2] + 0.009
+            else:
+                forecast_x0 = 0.287
+            # right edge: just left of the movement table
+            forecast_x1 = (0.797 if SHOW_MOVEMENT_TABLE else 0.995)
+
+            if forecast_x1 - forecast_x0 >= 0.10:
+                _ftable, forecast_table_bbox = _add_fill_table(
+                    ax,
+                    col_labels,
+                    [speed_row],
+                    x0=forecast_x0, x1=forecast_x1,
+                    y=0.045,
+                    fontsize=10.0,
+                    min_fontsize=FORECAST_TABLE_MIN_FONTSIZE,
+                    row_height_frac=1.9,
+                )
+            else:
+                print("[WARN] No room for the forecast table between the "
+                      "port and movement tables - skipped.")
+
+        # Map key for the forecast graphics, in a single strip directly on
+        # top of the table (this is where the reference puts it).  When it
+        # is drawn, the same three entries are left out of the intensity
+        # legend on the right so nothing is listed twice.
+        if SHOW_FORECAST_KEY and forecast_table_bbox is not None:
+            key_items = []
+            if SHOW_CONE and n_forecast >= 1:
+                key_items.append(("cone", "Uncertainty Cone"))
+            if fc_track_lon is not None:
+                key_items.append(("track", "Forecast Track"))
+            if SHOW_LANDFALL and landfall_info is not None:
+                key_items.append(("landfall", "Landfall Est."))
+
+            key_strip_bbox = _add_key_strip(
+                ax, key_items,
+                x0=forecast_table_bbox[0],
+                x1=forecast_table_bbox[0] + forecast_table_bbox[2],
+                y=forecast_table_bbox[1] + forecast_table_bbox[3],
+                fontsize=10.0,
+                min_fontsize=FORECAST_TABLE_MIN_FONTSIZE,
+                row_height_frac=1.9,
+            )
+
+  # -------------------- LEGEND --------------------
+  # Drawn after the bottom tables: the forecast key strip decides whether the
+  # cone / forecast-track / landfall entries still belong to this legend.
+    if SHOW_LEGEND:
+        # Keep the port-risk key separate from the long cyclone-status
+        # legend.  This follows the reference layout: a compact, horizontal
+        # key at the top of the map with Low / Mod / High in that order.
+        if SHOW_PORTS:
+            port_risk_handles = [
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#22b957', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='Low Risk',
+                ),
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#ff9500', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='Mod Risk',
+                ),
+                Line2D(
+                    [0], [0], marker='o', linestyle='None',
+                    markerfacecolor='#e60000', markeredgecolor='black',
+                    markeredgewidth=0.8, markersize=9,
+                    label='High Risk',
+                ),
+            ]
+            port_risk_legend = ax.legend(
+                handles=port_risk_handles,
+                loc='upper center',
+                bbox_to_anchor=(0.52, 0.995),
+                ncol=3,
+                fontsize=10,
+                frameon=True,
+                fancybox=True,
+                framealpha=0.96,
+                edgecolor='#cbd5e1',
+                borderpad=0.50,
+                handletextpad=0.50,
+                columnspacing=1.25,
+            )
+            for text in port_risk_legend.get_texts():
+                text.set_fontweight('bold')
+                text.set_color('#1f2937')
+            port_risk_legend.set_zorder(10000)
+            port_risk_legend.get_frame().set_zorder(10000)
+            # A second ax.legend call below would otherwise replace it.
+            ax.add_artist(port_risk_legend)
+
+    # Bias-corrected track (dashed magenta)
+        if SHOW_BIAS_TRACK:
+          legend_elements_prev.append(
+            Line2D(
+                [0], [0],
+                linestyle='--',
+                color='magenta',
+                lw=1.5,
+                label='AI-BC Track'
+            )
+        )
+            
+        # Forecast track (solid magenta).  When the key strip above the
+        # forecast table is on, it carries these three entries instead, so
+        # they are not listed twice on the same map.
+        if key_strip_bbox is None:
+            legend_elements_prev.append(
+                Line2D(
+                    [0], [0],
+                    linestyle='-',
+                    color='magenta',
+                    lw=2.0,
+                    label='Forecast Track'
+                )
+            )
+
+        # Cone (if shown)
+        if key_strip_bbox is None and SHOW_CONE and n_forecast >= 1:
+            legend_elements_prev.append(
+                Patch(
+                    facecolor='lightgray',
+                    edgecolor='gray',
+                    alpha=0.3,
+                    label='Uncertainty Cone'
+                )
+            )
+
+   # Insert AI Position right after Category 5
+        if SHOW_AI_POSITION:
+            legend_elements_prev.insert(
+                8,
+                Line2D(
+                    [0], [0],
+                    marker='*',
+                    color='k',
+                    markerfacecolor='yellow',
+                    markersize=12,
+                    lw=0,
+                    label='AI Position'
+                )
+            )
+
+        if key_strip_bbox is None and SHOW_LANDFALL and landfall_info is not None:
+            legend_elements_prev.append(
+                Line2D(
+                    [0], [0],
+                    marker='X',
+                    color='k',
+                    markerfacecolor='red',
+                    markersize=9,
+                    lw=0,
+                    label='Landfall Est.'
+                )
+            )
+
+        legend = ax.legend(
+            handles=legend_elements_prev,
+            loc='upper right',
+            title='INTENSITY SCALE'
+        )
+        legend.get_title().set_fontweight('bold')
+
+  # Make sure legend is above all plotted data
+        legend.set_zorder(9999)
+        legend.get_frame().set_zorder(9999)
+
 
     # -------------------- ACE BOX --------------------
     if SHOW_ACE_BOX:
