@@ -12,7 +12,8 @@ FLOAT_DEFAULTS = {
     "minlat_offset": -0.0,
     "maxlat_offset": -0.5,
     "output_dpi": 300.0,
-    "approach_radius": 800.0,  # ports farther than this (km) are skipped in the approach table
+    "approach_radius": 800.0,  # ports farther than this (km) are skipped in the port table
+    "approach_ports": 4.0,  # how many of the closest ports the table lists
 }
 
 # Default boolean toggles
@@ -20,7 +21,7 @@ BOOL_DEFAULTS = {
     "show_cone": True,
     "show_legend": True,
     "show_ports": True,
-    "show_port_table": True,
+    "show_port_table": True,   # legacy alias of show_approach_table (merged table)
     "show_movement_table": True,
     "show_ace_box": True,
     "show_max_wind_boxes": True,
@@ -29,7 +30,7 @@ BOOL_DEFAULTS = {
     "show_bias_track": True,
     "organize_by_year": False,  # save into output/plots/<year>/
     "show_landfall": True,      # estimate + mark where the track hits the coast
-    "show_approach_table": True,  # closest approach per port table
+    "show_approach_table": True,  # port table: current distance & direction per port
 }
 
 # Default strings under [style]
@@ -111,6 +112,7 @@ SHOW_LANDFALL = _BOOLS["show_landfall"]
 SHOW_APPROACH_TABLE = _BOOLS["show_approach_table"]
 
 APPROACH_RADIUS = _FLOATS["approach_radius"]
+APPROACH_PORTS = int(_FLOATS["approach_ports"])
 
 THEME = _STYLE["theme"]
 DATE_FORMAT = _STYLE["date_format"]

@@ -20,9 +20,12 @@ It is designed so that:
   - `cone.py` – builds the smooth NHC-style cone polygon.
   - `geo.py` – distance, bearing & direction helpers.
   - `ace.py` – ACE (Accumulated Cyclone Energy) calculator.
-  - `landfall.py` – landfall estimation + closest-approach-per-port math.
+  - `landfall.py` – landfall estimation, per-port closest approach and the
+    port table (current distance & direction of the centre from each port).
   - `plotting.py` – all Matplotlib plotting code (uses toggles from `config.ini`).
-  - `ports.py` – sample Bay of Bengal ports (edit as you like).
+  - `ports.py` – port list used for the map markers and the port table
+    (Bay of Bengal, Sri Lanka, Myanmar, Thailand/Malaysia, Sumatra — edit
+    as you like; add a `"Name": (lat, lon)` line and it just works).
   - `feature_manager.py` – automatically loads feature modules from `features/`.
 - `features/` – pluggable feature modules:
   - `_TEMPLATE.py` – copy-and-rename starter for your own feature.
@@ -85,7 +88,9 @@ Toggles (1 = ON, 0 = OFF):
 - `show_cone` – draw the uncertainty cone or not.
 - `show_legend` – show/hide legend.
 - `show_ports` – draw port markers.
-- `show_port_table` – show/hide port distance table.
+- `show_port_table` / `show_approach_table` – both toggles show the *same*
+  single port table (they are aliases, kept so older config.ini files keep
+  working); set both to 0 to hide it.
 - `show_movement_table` – show/hide movement info.
 - `show_ace_box` – show/hide ACE box.
 - `show_max_wind_boxes` – show/hide max observed/forecast boxes.
@@ -97,15 +102,27 @@ Toggles (1 = ON, 0 = OFF):
   `LF-DD/HHZ` label placed bottom-left of the marker (it falls back to
   left / up-left / above / bottom-right if that would collide with a
   forecast time label).
-- `show_approach_table` – closest-approach table per port: minimum
-  distance plus a `DIR` column giving the direction of the storm centre
-  from that port at closest approach (e.g. `Kakinada 71 km W`), i.e.
-  which side of the port the centre passes on.
+- `show_approach_table` – the port table. Ports are *selected* by
+  distance to the **landfall point** — the `approach_ports` ports nearest
+  to where the storm is expected to come ashore — and the table then shows
+  the situation **right now**: how far the current storm centre is from
+  each of those ports and in which direction it lies, e.g.
+
+  ```
+  PORT        DIS      DIR
+  Puri        450 km   SSE
+  ```
+
+  i.e. the centre is currently 450 km to the south-south-east of Puri.
 
 Numbers:
 
-- `approach_radius` – ports farther than this many km are skipped in the
-  closest-approach table (default 800).
+- `approach_radius` – ports farther than this many km from the track are
+  skipped in the port table (default 800).
+- `approach_ports` – how many of the landfall's nearest ports the table
+  lists (default 4). When the forecast never reaches land there is no
+  landfall to measure from, so the `approach_ports` ports the track comes
+  closest to are listed instead.
 
 Under `[style]`:
 
@@ -137,6 +154,15 @@ after the main PNG has been created (files starting with `_` are skipped).
 
 You do **not** need to edit `main.py` or any core file to add new features.
 If a feature crashes, it is reported and the rest continue.
+
+### Port table sizing
+
+The table is built from the measured text extents, not from a fixed size:
+column widths come from the glyph widths of the actual port names, the box
+is placed inside the map, and the font is shrunk (down to ~6.5 pt) if
+needed. If a name were still too long it is shortened with `…`. So adding
+a long name such as `Krishnapatnam` can never push text outside the table
+box.
 
 ## Data format
 
