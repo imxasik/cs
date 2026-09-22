@@ -102,11 +102,11 @@ Toggles (1 = ON, 0 = OFF):
   `LF-DD/HHZ` label placed bottom-left of the marker (it falls back to
   left / up-left / above / bottom-right if that would collide with a
   forecast time label).
-- `show_approach_table` – the port table. Ports are *selected* by closest
-  approach to the track — the `approach_ports` ports the track comes
-  nearest to — and the table then shows the situation **right now**: how
-  far the current storm centre is from each of those ports and in which
-  direction it lies, e.g.
+- `show_approach_table` – the port table. Ports are *selected* by
+  distance to the **landfall point** — the `approach_ports` ports nearest
+  to where the storm is expected to come ashore — and the table then shows
+  the situation **right now**: how far the current storm centre is from
+  each of those ports and in which direction it lies, e.g.
 
   ```
   PORT        DIS      DIR
@@ -119,8 +119,10 @@ Numbers:
 
 - `approach_radius` – ports farther than this many km from the track are
   skipped in the port table (default 800).
-- `approach_ports` – how many of the closest ports the table lists
-  (default 4).
+- `approach_ports` – how many of the landfall's nearest ports the table
+  lists (default 4). When the forecast never reaches land there is no
+  landfall to measure from, so the `approach_ports` ports the track comes
+  closest to are listed instead.
 
 Under `[style]`:
 
