@@ -143,7 +143,8 @@ def choose_data_file_interactive(explicit: str | None) -> Path:
 # Core run
 # --------------------------------------------------------------------------
 def process(cyclone_name, track_obs, track_for, is_invest,
-            out_root: Path, run_features: bool = True) -> Path:
+            out_root: Path, run_features: bool = True,
+            output_name: str = None) -> Path:
     """Generate the plot + run feature plugins. Returns the PNG path."""
     map_file = THIS_DIR / "assets" / "Map.png"
     if not map_file.exists():
@@ -163,7 +164,7 @@ def process(cyclone_name, track_obs, track_for, is_invest,
         plots_dir = plots_dir / year
         plots_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = plots_dir / f"{cyclone_name}_Track.png"
+    output_path = plots_dir / f"{cfg.output_stem(cyclone_name, output_name)}.png"
 
     print(f"{BOLD}{BLUE}Generating track & cone plot...{RESET}\n")
     results = plotting.plot_cyclone(
@@ -226,6 +227,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-ai", action="store_true", help="force AI overlays OFF")
     p.add_argument("--no-features", action="store_true", help="skip plugins in features/")
     p.add_argument("-o", "--outdir", default=None, help="output root folder (default: output/)")
+    p.add_argument("-n", "--name", default=None,
+                   help="name of the output PNG, without .png "
+                        "(default: \"<Name>_Track\"; overrides [style] output_name)")
+    p.add_argument("--full-track", action="store_true",
+                   help="zoom out so the whole observed track is in frame too")
     p.add_argument("-y", "--yes", action="store_true", help="never prompt; accept config defaults")
     return p
 
@@ -282,6 +288,8 @@ def main(argv=None) -> int:
     if args.no_ai:
         plotting.SHOW_AI_POSITION = cfg.SHOW_AI_POSITION = False
         plotting.SHOW_BIAS_TRACK = cfg.SHOW_BIAS_TRACK = False
+    if args.full_track:
+        plotting.FULL_TRACK_EXTENT = cfg.FULL_TRACK_EXTENT = True
 
     out_root = Path(args.outdir).resolve() if args.outdir else (THIS_DIR / "output")
 
@@ -289,6 +297,7 @@ def main(argv=None) -> int:
         output_path = process(
             cyclone_name, track_obs, track_for, is_invest,
             out_root=out_root, run_features=not args.no_features,
+            output_name=args.name,
         )
     except Exception as e:
         print(f"{RED}ERROR: {e}{RESET}")

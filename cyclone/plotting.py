@@ -20,9 +20,10 @@ from .config import (
     FORECAST_TZ_OFFSET, FORECAST_TABLE_MAX_COLS, FORECAST_TABLE_MIN_FONTSIZE,
     DATE_FORMAT, FOOTER_TEXT,
     FORECAST_TIME_LABEL, FORECAST_SPEED_LABEL, FORECAST_SPEED_UNIT,
+    FORECAST_SPEED_MODE, FULL_TRACK_EXTENT,
 )
 from .cone import create_nhc_cone
-from .geo import haversine, get_bearing, get_cardinal_direction
+from .geo import haversine, get_bearing, get_cardinal_direction, KNOTS_TO_KMH
 from .ace import calculate_ace
 from .landfall import (
     find_landfall,
@@ -204,14 +205,18 @@ def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
 # --------------------------------------------------------------------------
 # Bottom-centre forecast table (Time / Speed) and its map-key strip
 # --------------------------------------------------------------------------
-def forecast_step_speeds(track_obs, track_for, tz_offset_hours=6.0):
+def forecast_table_steps(track_obs, track_for, mode="wind", tz_offset_hours=6.0):
     """
-    Translation speed (km/h) of the storm at every forecast step.
+    (time, value) for every forecast step, ready for the "Speed (KM)" row.
 
-    The speed of a step is the great-circle distance from the previous
-    track point (the last *observed* fix for the first step) divided by the
-    hours between the two, which is the usual "how fast is it moving" value
-    printed on forecast tables.
+    mode="wind" (default)
+        The forecast wind intensity converted to km/h (1 kt = 1.852 km/h),
+        so the row always matches the knots printed on the forecast points
+        - 25KT -> 46KM/H, 30KT -> 56KM/H, 35KT -> 65KM/H.
+    mode="motion"
+        The storm's translation speed in km/h: the great-circle distance
+        from the previous track point (the last *observed* fix for the first
+        step) divided by the hours between the two.
 
     Times are shifted by `tz_offset_hours` (6 h -> BST) so the table can be
     read in local time.
@@ -221,7 +226,18 @@ def forecast_step_speeds(track_obs, track_for, tz_offset_hours=6.0):
         return steps
 
     import pandas as _pd
+    tz = _pd.Timedelta(hours=tz_offset_hours)
 
+    if mode != "motion":
+        for i in range(len(track_for)):
+            wind = track_for["Intensity"].iloc[i]
+            value = None
+            if wind is not None and not _pd.isna(wind):
+                value = float(wind) * KNOTS_TO_KMH
+            steps.append((track_for["tnd"].iloc[i] + tz, value))
+        return steps
+
+    # translation speed
     prev = None
     if track_obs is not None and len(track_obs):
         prev = (float(track_obs["Latitude"].iloc[-1]),
@@ -239,10 +255,16 @@ def forecast_step_speeds(track_obs, track_for, tz_offset_hours=6.0):
             if hours > 0:
                 speed = haversine((prev[0], prev[1]), (lat, lon)) / hours
 
-        steps.append((when + _pd.Timedelta(hours=tz_offset_hours), speed))
+        steps.append((when + tz, speed))
         prev = (lat, lon, when)
 
     return steps
+
+
+def forecast_step_speeds(track_obs, track_for, tz_offset_hours=6.0):
+    """Translation speed (km/h) per forecast step - see `forecast_table_steps`."""
+    return forecast_table_steps(track_obs, track_for, mode="motion",
+                               tz_offset_hours=tz_offset_hours)
 
 
 def thin_steps(steps, max_cols):
@@ -461,10 +483,23 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     else:
         background_image = None
 
-    lat_min = track_data_for["Latitude"].min() - BUFFER + MINLAT_OFFSET
-    lat_max = track_data_for["Latitude"].max() + BUFFER + MAXLAT_OFFSET
-    lon_min = track_data_for["Longitude"].min() - BUFFER - 0.5
-    lon_max = track_data_for["Longitude"].max() + BUFFER + 1
+    # Map extent.  By default the window follows the forecast track so the
+    # storm stays big on the map; with full_track_extent (config) or
+    # --full-track (CLI) the whole OBSERVED track is kept in frame too.
+    extent_lat = track_data_for["Latitude"].values
+    extent_lon = track_data_for["Longitude"].values
+    if (FULL_TRACK_EXTENT and track_data_obs is not None
+            and len(track_data_obs) and
+            "Latitude" in track_data_obs and len(track_data_obs["Latitude"])):
+        extent_lat = np.concatenate(
+            [track_data_obs["Latitude"].values, extent_lat])
+        extent_lon = np.concatenate(
+            [track_data_obs["Longitude"].values, extent_lon])
+
+    lat_min = float(np.min(extent_lat)) - BUFFER + MINLAT_OFFSET
+    lat_max = float(np.max(extent_lat)) + BUFFER + MAXLAT_OFFSET
+    lon_min = float(np.min(extent_lon)) - BUFFER - 0.5
+    lon_max = float(np.max(extent_lon)) + BUFFER + 1
 
     fig, ax = plt.subplots(figsize=(11, 10), dpi=OUTPUT_DPI)
     ax.set_xlim([lon_min, lon_max])
@@ -1153,8 +1188,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     if SHOW_FORECAST_TABLE and len(track_data_for) >= 1:
         steps = thin_steps(
-            forecast_step_speeds(
+            forecast_table_steps(
                 track_data_obs, track_data_for,
+                mode=FORECAST_SPEED_MODE,
                 tz_offset_hours=FORECAST_TZ_OFFSET,
             ),
             FORECAST_TABLE_MAX_COLS,
