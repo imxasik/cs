@@ -428,12 +428,14 @@ def _swatch(ax, x_c, y_c, kind, colour, fs, T, z=4):
                                facecolor=T["cone_fill"], alpha=0.25,
                                edgecolor=T["cone_edge"], linewidth=0.8,
                                zorder=z, clip_on=False))
-    elif kind in ("line", "dash"):
+    elif kind in ("line", "dash", "coast", "border"):
         w = fs * 1.5
         ax.plot([x_c - w / 2 / aw, x_c + w / 2 / aw], [y_c, y_c],
                 transform=ax.transAxes, color=colour,
-                lw=2.0 if kind == "line" else 1.4,
-                linestyle="-" if kind == "line" else (0, (4, 2.4)),
+                lw={"line": 2.0, "dash": 1.4,
+                    "coast": 1.5, "border": 1.0}[kind],
+                linestyle={"line": "-", "dash": (0, (4, 2.4)),
+                           "coast": "-", "border": (0, (2.6, 1.8))}[kind],
                 zorder=z, clip_on=False)
     elif kind == "x":
         ax.plot([x_c], [y_c], marker="X", markersize=fs * 1.0,
@@ -736,6 +738,8 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
               landfall_info, visible_ports, ml_point, show_grid):
     basemap.draw_land(ax, T, (lon_min, lon_max, lat_min, lat_max),
                       basemap_path)
+    basemap.draw_borders(ax, T, (lon_min, lon_max, lat_min, lat_max),
+                         str(Path(basemap_path).with_name("borders.geojson")))
     ax.set_xlim(lon_min, lon_max)
     ax.set_ylim(lat_min, lat_max)
     ax.set_aspect("equal", adjustable="datalim")
@@ -1123,6 +1127,13 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         if tr_rows:
             key_rows.append(("section", "TRACK & AREAS"))
             key_rows.extend(tr_rows)
+        base_rows = [("item", "coast", T["coast"], "Coastline")]
+        if basemap.has_borders(str(Path(map_asset_path).with_name(
+                "borders.geojson"))):
+            base_rows.append(("item", "border", T["border"],
+                              "Country Border"))
+        key_rows.append(("section", "BASEMAP"))
+        key_rows.extend(base_rows)
 
     # glance stats
     stats = []

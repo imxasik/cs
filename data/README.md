@@ -46,5 +46,7 @@ the clean way.
   needed for the uncertainty cone.
 - Keep the reference CSVs (`climo.csv`, `climo_bias.csv`) in `assets/` —
   the AI features read them from there.
-- The coastline is vector data in `assets/geo/land.geojson` (GSHHS,
-  public domain); rebuild with `scripts/make_coastline.py` if ever needed.
+- Coastline and country boundaries are vector data in `assets/geo/`
+  (`land.geojson`, `borders.geojson` — public domain, pre-built);
+  rebuild with `scripts/make_coastline.py` / `scripts/make_borders.py`
+  if ever needed.

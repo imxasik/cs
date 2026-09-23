@@ -76,6 +76,7 @@ OFFICIAL = {
     "land":        "#eceadb",   # land fill (warm paper tone)
     "coast":       "#87a0b4",   # coastline stroke
     "coast_halo":  "#b7d3e6",   # shallow-water glow around the coast
+    "border":      "#8f889c",   # country boundary (thin dashed)
 
     # ---- map graphics -----------------------------------------------------
     "obs_track":   "#33475c",   # observed track line

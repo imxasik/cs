@@ -41,7 +41,9 @@ Why it stays clean, whatever the data:
   coverage, so nothing is cut off and no empty ocean is wasted.
 * **The coast is vector, not a raster image** — GSHHS high-res shoreline
   drawn as theme-coloured land with a soft shallow-water halo, razor-sharp
-  at every zoom and DPI.
+  at every zoom and DPI, plus thin dashed **country boundaries** at
+  1:50 m scale (Natural Earth 50 m class) so the political geography reads
+  at a glance.
 * **Labels are collision-solved** — every chip (forecast points, NOW,
   landfall, ports, AI) is placed in the first free slot around its marker;
   if no slot is free the *label* is dropped, never drawn on top of
@@ -69,8 +71,19 @@ Why it stays clean, whatever the data:
   (k-NN landfall "AI Position"), `aibc.py` (climatology bias track).
 - `assets/geo/land.geojson` – GSHHS high-res coastline (public domain,
   simplified & clipped to the region; rebuild via
-  `scripts/make_coastline.py`). `assets/*.csv` – AI reference data.
+  `scripts/make_coastline.py`).
+- `assets/geo/borders.geojson` – country boundaries, 1:50 m scale (public
+  domain; rebuild via `scripts/make_borders.py`).
+- `assets/*.csv` – AI reference data.
 - `data/` – your track files. `output/plots/` – generated PNGs.
+
+## Mobile (Pydroid 3)
+
+The whole graphic is generated offline on the phone: no network calls, no
+extra dependencies beyond `matplotlib / numpy / pandas / scipy`, and both
+geo assets ship inside the repo (~1.1 MB total).  The `scripts/` folder is
+only needed on a laptop to *rebuild* those assets from the public-domain
+source databases — normal use never touches it.
 
 ## Quick start
 
