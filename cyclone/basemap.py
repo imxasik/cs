@@ -64,15 +64,20 @@ def draw_land(ax, theme, bounds, geojson_path):
         if e < lon_min or w > lon_max or n < lat_min or s > lat_max:
             continue
         path = MplPath(ring)
-        # shallow-water halo so the coast reads softly against the sea
+        # two-stage shallow-water shelf: a wide faint glow under a tighter
+        # band, so the coast reads like a real chart's depth contours
         ax.add_patch(PathPatch(
             path, transform=ax.transData, fill=False,
-            edgecolor=theme["coast_halo"], linewidth=2.6, alpha=0.55,
+            edgecolor=theme["coast_halo2"], linewidth=7.0, alpha=0.55,
+            zorder=0.3, clip_on=True, joinstyle="round"))
+        ax.add_patch(PathPatch(
+            path, transform=ax.transData, fill=False,
+            edgecolor=theme["coast_halo"], linewidth=2.8, alpha=0.75,
             zorder=0.4, clip_on=True, joinstyle="round"))
         # land fill + thin coast stroke
         ax.add_patch(PathPatch(
             path, transform=ax.transData, facecolor=theme["land"],
-            edgecolor=theme["coast"], linewidth=0.7, alpha=1.0,
+            edgecolor=theme["coast"], linewidth=0.8, alpha=1.0,
             zorder=0.5, clip_on=True, joinstyle="round"))
         drawn += 1
     return drawn

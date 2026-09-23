@@ -72,11 +72,15 @@ OFFICIAL = {
     "map_edge":    "#b9c6d4",   # map frame
 
     # ---- basemap (vector land) ---------------------------------------------
-    "sea":         "#d3e5f2",   # ocean
-    "land":        "#eceadb",   # land fill (warm paper tone)
-    "coast":       "#87a0b4",   # coastline stroke
-    "coast_halo":  "#b7d3e6",   # shallow-water glow around the coast
-    "border":      "#8f889c",   # country boundary (thin dashed)
+    # A porcelain-blue ocean against warm sand land: an uncommon, chart-room
+    # duotone that keeps every overlay (magenta track, grey cone, coloured
+    # rings & dots, white chips) crisply separated from the background.
+    "sea":         "#bcd7e6",   # open ocean (porcelain blue)
+    "coast_halo":  "#a3c8db",   # shallow-water shelf around the coast
+    "coast_halo2": "#cfe3ee",   # outer, fainter shelf glow
+    "land":        "#f2ecdb",   # land (warm sand / parchment)
+    "coast":       "#3f6a85",   # coastline stroke (deep steel blue)
+    "border":      "#95859e",   # country boundary (muted violet, dashed)
 
     # ---- map graphics -----------------------------------------------------
     "obs_track":   "#33475c",   # observed track line
