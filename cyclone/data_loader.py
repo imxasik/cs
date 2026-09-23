@@ -16,11 +16,15 @@ exported file rarely needs editing before it can be plotted:
 * the name header is optional — without one the file name is used, and a
   name like ``06B``/``92B`` is recognised as an invest automatically;
   ``Name:``, ``Storm:``, ``Tropical Cyclone:`` ... all work;
+* a one-line column-TITLE row (``TIME (UTC) | LAT | LON | WIND (KT) | ...``)
+  may sit first in every section — units in parentheses are ignored;
 * column headers are optional and may appear in any order/case with
   synonyms (``date``/``time``, ``lat``, ``lon``/``lng``, ``wind``/``kt``,
   ``mslp``/``hpa``, ``r34`` ...); without a header the canonical column
   order above is assumed;
-* any of ``,``  ``;``  tab  or plain spaces may separate the columns;
+* any of ``|``  ``,``  ``;``  tab  or plain spaces may separate the columns
+  (``|`` "vertical line" separators keep hand-edited rows tidy without
+  wide padding);
 * blank lines and ``#``/``;`` comment lines are skipped;
 * missing radii/pressures may be written ``00``, ``0``, ``-``, ``--`` or
   left empty;
@@ -112,18 +116,31 @@ def _sniff_delimiter(line):
     return None   # whitespace separated
 
 
+def _norm_header_token(field):
+    """One header cell -> comparable token ('TIME (UTC)' -> 'time')."""
+    s = str(field)
+    s = re.sub(r"\([^)]*\)", " ", s)          # drop unit hints: (UTC) (KT)
+    s = _glue_header(s.lower())               # "synoptic time" -> "synoptictime"
+    s = re.sub(r"[^a-z0-9]+", " ", s)         # punctuation / '|' -> space
+    return " ".join(s.split())
+
+
 def _map_header(fields):
     """Map a header line to canonical column names; None if not a header."""
-    lowered = [f.strip().lower() for f in fields]
-    if not any("time" in x or "date" in x or x in ("lat", "latitude")
+    lowered = [_norm_header_token(f) for f in fields]
+    if not any(("time" in x or "date" in x or x in ("lat", "latitude"))
                for x in lowered):
         return None
     mapping = []
     for field in lowered:
         canon = None
+        key = field.replace(" ", "")
         for target, syns in _SYNONYMS.items():
-            if field == target.lower() or field in syns:
-                canon = target
+            for cand in (target.lower(),) + tuple(syns):
+                if field == cand or (key and key == cand.replace(" ", "")):
+                    canon = target
+                    break
+            if canon is not None:
                 break
         mapping.append(canon)
     return mapping
@@ -138,8 +155,7 @@ def _parse_rows(lines, is_forecast):
     header_idx = 0
     for i, line in enumerate(lines[:3]):
         delim = _sniff_delimiter(line)
-        head = _glue_header(line) if delim is None else line
-        fields = re.split(delim, head) if delim else head.split()
+        fields = line.split(delim) if delim else line.split()
         cand = _map_header(fields)
         if cand is not None and any(c is not None for c in cand):
             mapping = cand
@@ -149,7 +165,7 @@ def _parse_rows(lines, is_forecast):
     records = []
     for line in lines[header_idx:]:
         delim = _sniff_delimiter(line)
-        fields = [f.strip() for f in (re.split(delim, line) if delim
+        fields = [f.strip() for f in (line.split(delim) if delim
                                       else line.split())]
         if not fields:
             continue
@@ -214,14 +230,14 @@ def _try_v2(lines):
     obs_lines, for_lines = [], []
     for line in lines:
         parts = line.split()
-        key = parts[0].upper()
-        if key == "NAME":
+        key = parts[0].upper().rstrip(":")
+        if key == "NAME" and len(parts) > 1:
             name = line.split(None, 1)[1].strip()
-        elif key == "KIND":
+        elif key == "KIND" and len(parts) > 1:
             kind = parts[1].lower()
-        elif key == "OBS":
+        elif key == "OBS" and len(parts) == 1:
             section = "obs"
-        elif key == "FORECAST":
+        elif key == "FORECAST" and len(parts) == 1:
             section = "for"
         else:
             (for_lines if section == "for" else obs_lines).append(line)
