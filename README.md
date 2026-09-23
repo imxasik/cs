@@ -88,6 +88,21 @@ Under `[plot]` you can set:
 - `full_track_extent` – `0` (default) zooms the map to the forecast track;
   `1` zooms out far enough to keep the whole **observed** track in frame
   too (the same as the `--full-track` command-line flag).
+- `wind_radius_extent` – `1` (default) measures the map window from what is
+  actually drawn: every forecast **wind-radius circle** (`WindR24/34/64`)
+  and the uncertainty cone must fit completely inside the frame.  A storm
+  with wide radii **extends** the map, a compact one **trims** it — so no
+  ring is ever cut off by the map edge, and no ocean is wasted when the
+  radii are small.  After drawing, the real rendered boxes of the overlay
+  cards are measured too: the window zooms out just enough for the lowest
+  ring to clear the bottom tables and the highest ring to clear the top
+  legend / risk cards, keeping the head-room above and below the storm
+  balanced.  The window is also clipped to the background map coverage, so
+  blank bands around `Map.png` can never appear.  `0` restores the classic
+  fixed `buffer` window around the forecast track.
+- `wind_radius_pad` – clear margin (degrees) kept beyond the outermost
+  ring / track point when `wind_radius_extent = 1` (default `0.2` —
+  smaller means a tighter zoom).
 
 Toggles (1 = ON, 0 = OFF):
 

@@ -21,6 +21,7 @@ from .config import (
     DATE_FORMAT, FOOTER_TEXT,
     FORECAST_TIME_LABEL, FORECAST_SPEED_LABEL, FORECAST_SPEED_UNIT,
     FORECAST_SPEED_MODE, FULL_TRACK_EXTENT,
+    WIND_RADIUS_EXTENT, WIND_RADIUS_PAD,
 )
 from .cone import create_nhc_cone
 from .geo import haversine, get_bearing, get_cardinal_direction, KNOTS_TO_KMH
@@ -63,6 +64,100 @@ def wind_cat(w):
         if w >= thr:
             return name
     return "LOW"
+
+
+# --------------------------------------------------------------------------
+# Wind-radius driven map extent
+# --------------------------------------------------------------------------
+# The map window is sized from what is actually DRAWN, not from a fixed
+# buffer: every forecast wind-radius ring (WindR24/34/64, drawn as circles
+# around the forecast centres) and the uncertainty cone must sit fully
+# inside the frame.  A storm with wide radii extends the window, a compact
+# one trims it - so no ring is ever cut off by the map edge (or swallowed
+# by the bottom tables) and no ocean is wasted when the radii are small.
+
+def _row_max_radius(row):
+    """Largest wind radius (degrees) found in one forecast row, else 0."""
+    r = 0.0
+    for col in ("WindR24", "WindR34", "WindR64"):
+        try:
+            v = float(row[col])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if np.isfinite(v) and v > r:
+            r = v
+    return r
+
+
+def wind_radius_extent(anchor_lat, anchor_lon, track_for):
+    """
+    (lat_min, lat_max, lon_min, lon_max, clearance_low, clearance_high)
+    for the map window, measured from the forecast wind-radius rings.
+
+    Starts from the track anchor points (forecast track - plus the whole
+    observed track when full_track_extent is on), grows the box so every
+    forecast wind-radius circle fits completely inside, then adds an even
+    `wind_radius_pad` margin on all four sides and clips the result to the
+    background map coverage (min_lat/max_lat/min_lon/max_lon), so the frame
+    never runs past the edge of Map.png.
+
+    The rings are drawn as degree-radius circles around each forecast
+    centre, so a ring of radius r spans lat +/- r and lon +/- r around that
+    centre - exactly the box measured here.
+
+    `clearance_low` / `clearance_high` are (lon, lat) lists of the lowest
+    and highest ink of every drawn element (ring bottom / ring top, plus
+    the track anchor points at the bottom).  The caller uses them to zoom
+    the window until that ink clears the overlay cards (tables at the
+    bottom, legend / risk key at the top) with an even gap.
+    """
+    lat_min = float(np.min(anchor_lat))
+    lat_max = float(np.max(anchor_lat))
+    lon_min = float(np.min(anchor_lon))
+    lon_max = float(np.max(anchor_lon))
+
+    # lowest ink of everything drawn: ring bottom points + track points
+    clearance_low = [
+        (float(lon), float(lat))
+        for lon, lat in zip(anchor_lon, anchor_lat)
+    ]
+    # highest ink: ring top points
+    clearance_high = []
+
+    if track_for is not None and len(track_for) > 0:
+        # The grey uncertainty cone is always drawn with the rings, so its
+        # half-width at every step (last observed fix = step 0, growing by
+        # UCR per forecast point - the same rule create_nhc_cone uses) is
+        # the minimum radius the window must also contain.
+        include_cone = SHOW_CONE and len(track_for) >= 2
+        for i in range(len(track_for)):
+            lat = float(track_for["Latitude"].iloc[i])
+            lon = float(track_for["Longitude"].iloc[i])
+            r = _row_max_radius(track_for.iloc[i])
+            if include_cone:
+                r = max(r, UCR * (i + 1))
+            if r > 0.0:
+                lat_min = min(lat_min, lat - r)
+                lat_max = max(lat_max, lat + r)
+                lon_min = min(lon_min, lon - r)
+                lon_max = max(lon_max, lon + r)
+                clearance_low.append((lon, lat - r))
+                clearance_high.append((lon, lat + r))
+
+    # Even margin around everything that is drawn, plus the fine-tuning
+    # vertical offsets from config.ini.
+    lat_min += MINLAT_OFFSET - WIND_RADIUS_PAD
+    lat_max += MAXLAT_OFFSET + WIND_RADIUS_PAD
+    lon_min -= WIND_RADIUS_PAD
+    lon_max += WIND_RADIUS_PAD
+
+    # Never show more than the background map covers (no blank bands).
+    lat_min = max(lat_min, MIN_LAT)
+    lat_max = min(lat_max, MAX_LAT)
+    lon_min = max(lon_min, MIN_LON)
+    lon_max = min(lon_max, MAX_LON)
+
+    return lat_min, lat_max, lon_min, lon_max, clearance_low, clearance_high
 
 
 # --------------------------------------------------------------------------
@@ -124,7 +219,8 @@ def _fit_text(text, max_width_pt, fontsize, weight="normal"):
 def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
                        min_fontsize=6.5, x=0.005, y=0.045,
                        max_width_frac=0.34, cell_pad_frac=0.45,
-                       row_height_frac=1.9, caption=None, zorder=7):
+                       row_height_frac=1.9, caption=None, zorder=7,
+                       overlay_out=None):
     """
     Draw a matplotlib table whose box is sized from the real text extents,
     so long cell contents (e.g. "Krishnapatnam", "Mawlamyine") can never
@@ -203,7 +299,7 @@ def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
             cell.set_text_props(fontweight='bold')
 
     if caption:
-        ax.text(
+        caption_text = ax.text(
             x, y + bbox[3] + 0.006, caption,
             transform=ax.transAxes,
             fontsize=max(min_fontsize, fontsize - 1.0),
@@ -212,6 +308,11 @@ def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
                       boxstyle='round,pad=0.25'),
             zorder=zorder,
         )
+        if overlay_out is not None:
+            overlay_out.append(caption_text)
+
+    if overlay_out is not None:
+        overlay_out.append(table)
 
     return table, bbox
 
@@ -392,7 +493,7 @@ KEY_KINDS = {
 
 def _add_key_strip(ax, items, *, x0, x1, y, fontsize=10.0, min_fontsize=6.5,
                    row_height_frac=1.9, gap_pt=6.0, cell_pad_frac=0.35,
-                   zorder=7):
+                   zorder=7, overlay_out=None):
     """
     One-row key strip ("Uncertainty Cone | Forecast Track | Landfall Est.")
     drawn straight above the forecast table, sharing its left/right edges.
@@ -440,13 +541,16 @@ def _add_key_strip(ax, items, *, x0, x1, y, fontsize=10.0, min_fontsize=6.5,
     for (kind, label), col_pt in zip(items, cols_pt):
         col_frac = col_pt * w_frac
         # cell box
-        ax.add_patch(Rectangle(
+        cell_rect = Rectangle(
             (x_cur, y), col_frac, row_h_frac,
             transform=ax.transAxes, clip_on=False,
             facecolor='white', edgecolor='black', linewidth=0.7,
             alpha=_GLASS_ALPHA,
             zorder=zorder,
-        ))
+        )
+        ax.add_patch(cell_rect)
+        if overlay_out is not None:
+            overlay_out.append(cell_rect)
 
         sw_w = KEY_KINDS[kind]
         # Centre the swatch+label group inside its cell: measure the real
@@ -506,9 +610,14 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     else:
         background_image = None
 
-    # Map extent.  By default the window follows the forecast track so the
-    # storm stays big on the map; with full_track_extent (config) or
-    # --full-track (CLI) the whole OBSERVED track is kept in frame too.
+    # Map extent.  Two modes:
+    #   wind_radius_extent (default) - the window is measured from the
+    #       forecast wind-radius rings (and the cone), so every circle is
+    #       fully in frame: wide radii extend the map, small ones trim it.
+    #   classic (wind_radius_extent = 0) - fixed `buffer` padding around
+    #       the forecast track; with full_track_extent (config) or
+    #       --full-track (CLI) the whole OBSERVED track is kept in frame
+    #       too.
     extent_lat = track_data_for["Latitude"].values
     extent_lon = track_data_for["Longitude"].values
     if (FULL_TRACK_EXTENT and track_data_obs is not None
@@ -519,14 +628,31 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         extent_lon = np.concatenate(
             [track_data_obs["Longitude"].values, extent_lon])
 
-    lat_min = float(np.min(extent_lat)) - BUFFER + MINLAT_OFFSET
-    lat_max = float(np.max(extent_lat)) + BUFFER + MAXLAT_OFFSET
-    lon_min = float(np.min(extent_lon)) - BUFFER - 0.5
-    lon_max = float(np.max(extent_lon)) + BUFFER + 1
+    if WIND_RADIUS_EXTENT:
+        (lat_min, lat_max, lon_min, lon_max,
+         _clearance_low, _clearance_high) = wind_radius_extent(
+            extent_lat, extent_lon, track_data_for)
+    else:
+        lat_min = float(np.min(extent_lat)) - BUFFER + MINLAT_OFFSET
+        lat_max = float(np.max(extent_lat)) + BUFFER + MAXLAT_OFFSET
+        lon_min = float(np.min(extent_lon)) - BUFFER - 0.5
+        lon_max = float(np.max(extent_lon)) + BUFFER + 1
 
     fig, ax = plt.subplots(figsize=(11, 10), dpi=OUTPUT_DPI)
     ax.set_xlim([lon_min, lon_max])
     ax.set_ylim([lat_min, lat_max])
+
+    # Artists that sit ON the map as bottom overlay cards (port / forecast /
+    # movement tables, key strip, footer).  Once everything is drawn, their
+    # real rendered height is measured and the map window is extended
+    # downwards until the lowest wind-radius ring clears the tallest card -
+    # so a wind radius can never be "cut" by the tables at the bottom.
+    bottom_overlays = []
+    # Same idea for the top corners: the risk key, the intensity legend and
+    # the ACE box.  The window is extended upwards until the highest
+    # wind-radius ring clears them too, so the head-room above and below
+    # the storm stays balanced.
+    top_overlays = []
 
     if background_image is not None:
         ax.imshow(background_image, extent=[MIN_LON, MAX_LON, MIN_LAT, MAX_LAT])
@@ -890,15 +1016,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             [r["name"], f"{r['dist_km']} km", r["dir_str"]]
             for r in approach_rows
         ]
-        _centre = current_centre(track_data_obs, track_data_for)
-        _where = (f" ({_centre[0]:.1f}N, {_centre[1]:.1f}E)"
-                  if _centre is not None else "")
-        if landfall_info is not None:
-            _caption = (f"{len(table_rows)} NEAREST PORT STATIONS\n"
-                        f" \u00b7 CENTRE{_where}")
-        else:
-            _caption = (f"{len(table_rows)} PORTS NEAREST THE TRACK"
-                        f" \u00b7 DIST FROM CURRENT CENTRE{_where}")
         _port_table, port_table_bbox = _add_dynamic_table(
             ax,
             ["PORT", "DIS", "DIR"],
@@ -907,10 +1024,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             x=0.005, y=0.045,
             max_width_frac=0.30,
             row_height_frac=1.85,
-            caption=_caption,
+            overlay_out=bottom_overlays,
         )
     elif SHOW_APPROACH_TABLE or SHOW_PORT_TABLE:
-        ax.text(
+        _no_port_text = ax.text(
             0.01, 0.05,
             "No ports within approach range",
             transform=ax.transAxes,
@@ -919,6 +1036,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
             zorder=7
         )
+        bottom_overlays.append(_no_port_text)
 
     # -------------------- PORT MARKERS & LABELS --------------------
     # Every visible port gets a colour based on its distance to the estimated
@@ -1183,6 +1301,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         for _cell in table2.get_celld().values():
             _fc = _cell.get_facecolor()
             _cell.set_facecolor((_fc[0], _fc[1], _fc[2], _GLASS_ALPHA))
+        bottom_overlays.append(table2)
 
     # ------------- FORECAST TABLE (bottom centre) -------------
     # Sits in the free strip between the port table (left) and the movement
@@ -1231,6 +1350,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                     min_fontsize=FORECAST_TABLE_MIN_FONTSIZE,
                     row_height_frac=3,
                 )
+                bottom_overlays.append(_ftable)
             else:
                 print("[WARN] No room for the forecast table between the "
                       "port and movement tables - skipped.")
@@ -1256,6 +1376,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 fontsize=10.0,
                 min_fontsize=FORECAST_TABLE_MIN_FONTSIZE,
                 row_height_frac=1.9,
+                overlay_out=bottom_overlays,
             )
 
   # -------------------- LEGENDS --------------------
@@ -1319,6 +1440,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             port_risk_legend.get_frame().set_zorder(10000)
             # A second ax.legend call below would otherwise replace it.
             ax.add_artist(port_risk_legend)
+            top_overlays.append(port_risk_legend)
 
         def _make_rows(fs):
             """Build every legend row with marker sizes tied to `fs`, so the
@@ -1466,6 +1588,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                     and _lb.width <= 0.32 * _ab.width):
                 break
 
+        # the kept legend card is a top overlay for the ring-clearance pass
+        top_overlays.append(legend)
+
     # -------------------- ACE BOX --------------------
     if SHOW_ACE_BOX:
         ace_value = calculate_ace(track_data_obs)
@@ -1476,6 +1601,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             color='white', transform=ax.transAxes, zorder=7
         )
         ace.set_bbox(dict(facecolor='black', alpha=0.4, edgecolor='none'))
+        top_overlays.append(ace)
 
     # -- ML LANDFALL PREDICTION (VERY SIMPLE k-NN) --
     ml_landfall_lat = None
@@ -1561,13 +1687,164 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
              f"WIND: {ci} KTS | PRESSURE: {pressure} HPA | UPDATED: {ci_tnd:%HZ @ %d %b %Y}"),
             (0.99, "right", FOOTER_TEXT),
         ]:
-            ax.text(
+            footer_text_artist = ax.text(
                 x, 0.01, t,
                 ha=ha, va="bottom",
                 fontsize=14, color="white",
                 bbox=dict(fc="black", alpha=.4, ec="none"),
                 transform=ax.transAxes, zorder=7
             )
+            bottom_overlays.append(footer_text_artist)
+
+    # ------- DYNAMIC ZOOM: WIND RADII vs OVERLAY CARDS -------
+    # Everything is drawn now, so the real rendered boxes of the overlay
+    # cards can be measured from the renderer.  The window is then solved
+    # directly from those measurements - and only as large as it has to be:
+    #   bottom - every ring's lowest ink clears the cards in its own
+    #            column (port / forecast / movement tables, key strip,
+    #            footer) by a thin gap,
+    #   top    - every ring's highest ink stays below the cards above it
+    #            (risk key, legend, ACE box) by a slightly larger gap,
+    # so no radius is ever cut by a table and the free space above and
+    # below the storm stays balanced.
+    #
+    # The axes use a fixed data aspect ("equal", adjustable "datalim"),
+    # under which Matplotlib re-derives the limits on every draw: it only
+    # ever EXPANDS them, around their centre.  So instead of nudging the
+    # y-limits (which gets re-expanded and drifts), the needed bottom/top
+    # are solved at once and the x-axis is set to the exactly matching
+    # span - leaving apply_aspect() nothing to re-derive, which makes the
+    # zoom both tight and stable.
+    if WIND_RADIUS_EXTENT and (bottom_overlays or top_overlays):
+        try:
+            _GAP_LOW = 0.012     # ring ink -> card below it
+            _GAP_HIGH = 0.025    # ring ink -> card above it
+            _EDGE = 0.012        # frame-edge margin where no card sits
+
+            for _pass in range(3):
+                fig.canvas.draw()
+                _ren = fig.canvas.get_renderer()
+                _ax_bb = ax.get_window_extent(_ren)
+                if _ax_bb.height <= 0 or _ax_bb.width <= 0:
+                    break
+                _cy0, _cy1 = ax.get_ylim()
+                _cx0, _cx1 = ax.get_xlim()
+                _S = _cy1 - _cy0
+                if _S <= 0:
+                    break
+
+                # measure every overlay card as an axes-fraction box
+                _cards_low, _cards_high = [], []
+                for _art in bottom_overlays + top_overlays:
+                    try:
+                        _bb = _art.get_window_extent(_ren)
+                    except Exception:
+                        continue
+                    if _bb is None or (_bb.width <= 0 and _bb.height <= 0):
+                        continue
+                    _x0f = (_bb.x0 - _ax_bb.x0) / _ax_bb.width
+                    _x1f = (_bb.x1 - _ax_bb.x0) / _ax_bb.width
+                    _y0f = (_bb.y0 - _ax_bb.y0) / _ax_bb.height
+                    _y1f = (_bb.y1 - _ax_bb.y0) / _ax_bb.height
+                    if 0.0 < _y1f <= 0.5:
+                        _cards_low.append((_x0f, _x1f, _y1f))
+                    elif 0.5 <= _y0f < 1.0:
+                        _cards_high.append((_x0f, _x1f, _y0f))
+
+                # Demand caps (in data degrees), re-measured every pass:
+                #   bottom - the window bottom may sit at most at the ring
+                #            ink minus its gap below the cards in its column
+                #   top    - the window top must at least reach the ring ink
+                #            plus its gap below the cards above it, but is
+                #            capped at the map coverage (ink beyond Map.png
+                #            can never be shown, so demanding margin for it
+                #            would just grow the window forever)
+                _wb_dem = _cy0
+                for _lon, _ink in _clearance_low:
+                    if not (_cx0 <= _lon <= _cx1):
+                        continue   # not visible in the frame
+                    _xf = (_lon - _cx0) / (_cx1 - _cx0)
+                    # cards_low tuples are (x0, x1, y1) -> the card's TOP
+                    # edge is element [2]
+                    _tf = max(
+                        [c[2] for c in _cards_low
+                         if c[0] - 0.005 <= _xf <= c[1] + 0.005],
+                        default=_EDGE,
+                    )
+                    _wb_dem = min(_wb_dem, _ink - (_tf + _GAP_LOW) * _S)
+                _wb_dem = max(_wb_dem, MIN_LAT)
+
+                _wt_dem = _cy1
+                for _lon, _ink in _clearance_high:
+                    if not (_cx0 <= _lon <= _cx1):
+                        continue
+                    _xf = (_lon - _cx0) / (_cx1 - _cx0)
+                    # cards_high tuples are (x0, x1, y0) -> the card's
+                    # BOTTOM edge is element [2]
+                    _bf = min(
+                        [c[2] for c in _cards_high
+                         if c[0] - 0.005 <= _xf <= c[1] + 0.005],
+                        default=1.0 - _EDGE,
+                    )
+                    _wt_dem = max(_wt_dem,
+                                  min(_ink + (1.0 - _bf + _GAP_HIGH) * _S,
+                                      MAX_LAT))
+
+                # the window must also stay tall enough to keep the full
+                # storm width inside the frame at the fixed data aspect
+                _S_width = (_cx1 - _cx0) / (_ax_bb.width / _ax_bb.height)
+                _S_req = max(_wt_dem - _wb_dem, _S_width, _S)
+
+                if _S_req <= _S * 1.001:
+                    break          # current window already clears everything
+
+                # place the grown window: anchored at whichever side asked
+                # for room, then clamped to the background map coverage
+                if _wt_dem > _cy1 + 1e-9:          # more head-room on top
+                    _wt = min(_wt_dem, MAX_LAT)
+                    _wb = _wt - _S_req
+                    if _wb < MIN_LAT:
+                        _wb = MIN_LAT
+                        _wt = min(MAX_LAT, _wb + _S_req)
+                elif _wb_dem < _cy0 - 1e-9:        # more room at the bottom
+                    _wb = max(_wb_dem, MIN_LAT)
+                    _wt = _wb + _S_req
+                    if _wt > MAX_LAT:
+                        _wt = MAX_LAT
+                        _wb = max(MIN_LAT, _wt - _S_req)
+                else:                              # width-driven: centre it
+                    _c = 0.5 * (_cy0 + _cy1)
+                    _wb = _c - 0.5 * _S_req
+                    _wt = _c + 0.5 * _S_req
+                    if _wt > MAX_LAT:
+                        _wt = MAX_LAT
+                        _wb = _wt - _S_req
+                    if _wb < MIN_LAT:
+                        _wb = MIN_LAT
+                        _wt = min(MAX_LAT, _wb + _S_req)
+
+                # keep the fixed data aspect exact by giving x the matching
+                # span, so apply_aspect() has nothing left to re-derive
+                _xc = 0.5 * (_cx0 + _cx1)
+                _half_lon = 0.5 * (_wt - _wb) * (_ax_bb.width / _ax_bb.height)
+                lat_min, lat_max = _wb, _wt
+                ax.set_ylim(_wb, _wt)
+                ax.set_xlim(_xc - _half_lon, _xc + _half_lon)
+
+            # final safety: never let the window hang past the background
+            # map coverage (the first aspect draw can overshoot it)
+            fig.canvas.draw()
+            _cy0, _cy1 = ax.get_ylim()
+            if _cy1 > MAX_LAT + 1e-9 or _cy0 < MIN_LAT - 1e-9:
+                _wb = max(_cy0, MIN_LAT)
+                _wt = min(_cy1, MAX_LAT)
+                _cx0, _cx1 = ax.get_xlim()
+                _xc = 0.5 * (_cx0 + _cx1)
+                _half_lon = 0.5 * (_wt - _wb) * (_ax_bb.width / _ax_bb.height)
+                ax.set_ylim(_wb, _wt)
+                ax.set_xlim(_xc - _half_lon, _xc + _half_lon)
+        except Exception as e:
+            print(f"[WARN] Wind-radius card clearance failed: {e}")
 
     # ------------- FINAL STYLING & SAVE ----------
     ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
