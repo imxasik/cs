@@ -94,18 +94,18 @@ OFFICIAL = {
     # drawn big enough to stay legible at that scale.
     "fs_title":    23.0,
     "fs_subtitle": 12.0,
-    "fs_card_title": 11.5,
+    "fs_card_title": 12.0,
     "fs_body":     11.4,
     "fs_small":    10.0,
     "fs_tiny":     9.0,
     "fs_table":    12.2,
     "fs_chip":     12.6,
     "fs_footer":   11.4,
-    "fs_tick":     11.6,
+    "fs_tick":     12.0,
 
     # ---- metrics (points) --------------------------------------------------
-    "card_pad":    11.0,        # inner padding of a card
-    "card_gap":    13.5,        # gap between stacked cards (section spacing)
+    "card_pad":    9.0,         # inner padding of a card
+    "card_gap":    9.0,         # gap between stacked cards (section spacing)
     "card_radius": 7.0,         # corner radius
     "row_h":       17.0,        # legend / table row height
     "line_card":   1.35,

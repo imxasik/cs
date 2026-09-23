@@ -45,7 +45,8 @@ BOOL_DEFAULTS = {
 # Default strings under [style]
 STYLE_DEFAULTS = {
     "theme": "official",                # design tokens: cyclone/theme.py
-    "brand_name": "XP WEATHER",         # header brand chip (left corner)
+    "brand_name": "XP WEATHER",         # fallback when no logo is supplied
+    "brand_logo": "",                   # PNG/JPG path, relative to the repo root
     "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
     "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
     "forecast_time_label": "TIME (BST)",   # first cell of the forecast table
@@ -148,6 +149,7 @@ SHOW_SCALE_BAR = _BOOLS["show_scale_bar"]
 
 THEME = _STYLE["theme"]
 BRAND_NAME = _STYLE["brand_name"]
+BRAND_LOGO = _STYLE["brand_logo"].strip()
 DATE_FORMAT = _STYLE["date_format"]
 FOOTER_TEXT = _STYLE["footer_text"]
 FORECAST_TIME_LABEL = _STYLE["forecast_time_label"]
