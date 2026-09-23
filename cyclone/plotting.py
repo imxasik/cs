@@ -8,13 +8,13 @@ it impossible for two elements to ever overlap:
     |  HEADER   brand chip · title · validity · issued card        |
     +---------------------------------------------+----------------+
     |                                             |   SIDEBAR      |
-    |   MAP                                       |   key card     |
-    |   (track, cone, wind radii, ports,          |   at-a-glance  |
+    |   MAP                                       |   at-a-glance  |
+    |   (track, cone, wind radii, ports,          |   key card     |
     |    landfall, collision-free label chips)    |   port table   |
     |                                             |                |
+    +---------------------------------------------+                |
+    |  BOTTOM BAND   map key strip · forecast table|               |
     +---------------------------------------------+----------------+
-    |  BOTTOM BAND   map key strip · forecast table                |
-    +--------------------------------------------------------------+
     |  FOOTER   wind / pressure / updated · brand                  |
     +--------------------------------------------------------------+
 
@@ -41,7 +41,7 @@ from matplotlib.path import Path as MplPath
 from . import basemap
 from . import config as cfg
 from .theme import (
-    get_theme, INTENSITY_SCALE, WIND_RADII, PORT_RISK,
+    get_theme, INTENSITY_SCALE, INTENSITY_LEGEND_ORDER, WIND_RADII, PORT_RISK,
     wind_category, wind_color, wind_cat_label,
 )
 from .cone import create_nhc_cone
@@ -450,9 +450,25 @@ def _swatch(ax, x_c, y_c, kind, colour, fs, T, z=4):
 
 
 def _key_card_height(rows, fs, T):
-    h = T["card_pad"] * 2 + fs * 1.55
-    for row in rows:
-        h += fs * 1.55 if row[0] == "section" else T["row_h"]
+    """rows: ('section', title) | ('item', kind, colour, label).
+
+    Items pack two per row (a compact legend grid) and every section gets
+    clear space before its title, so one block never runs into the next.
+    """
+    h = T["card_pad"] * 2 + fs * 1.85
+    i = 0
+    while i < len(rows):
+        if rows[i][0] == "section":
+            h += fs * 2.55                      # gap + title + lead-in
+            i += 1
+            j = i
+            while j < len(rows) and rows[j][0] != "section":
+                j += 1
+            h += ((j - i + 1) // 2) * fs * 1.62  # two items per row
+            i = j
+        else:
+            h += fs * 1.62
+            i += 1
     return h
 
 
@@ -464,262 +480,351 @@ def _draw_key_card(ax, x0, x1, y1, rows, fs, T):
     add_rrect(ax, x0, y0, x1, y1, T["card_radius"], fc=T["paper"],
               ec=T["card_edge"], lw=T["line_card"], z=2, shadow=True, T=T)
     pad = T["card_pad"] / aw
-    ty = y1 - (T["card_pad"] + fs * 0.72) / ah
-    ax.text(x0 + pad, ty, "MAP KEY", transform=ax.transAxes, fontsize=fs,
-            fontweight="bold", color=T["ink"], ha="left", va="center",
-            zorder=4)
-    tw = _text_width_pt("MAP KEY", fs, "bold") / aw
-    ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 0.78 / ah] * 2,
-            transform=ax.transAxes, color=T["accent"], lw=1.6, zorder=4,
+    ty = y1 - (T["card_pad"] + fs * 0.85) / ah
+    ax.text(x0 + pad, ty, "MAP KEY", transform=ax.transAxes,
+            fontsize=fs * 1.05, fontweight="bold", color=T["ink"], ha="left",
+            va="center", zorder=4)
+    tw = _text_width_pt("MAP KEY", fs * 1.05, "bold") / aw
+    ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 0.88 / ah] * 2,
+            transform=ax.transAxes, color=T["accent"], lw=1.8, zorder=4,
             clip_on=False)
-    y = ty - fs * 1.15 / ah
-    gut = 16.0 / aw
-    for row in rows:
-        if row[0] == "section":
-            y -= fs * 0.35 / ah
-            ax.text(x0 + pad, y, row[1], transform=ax.transAxes,
-                    fontsize=fs * 0.82, fontweight="bold",
+    y = ty - fs * 1.55 / ah
+    gut = 15.0 / aw
+    inner = (x1 - x0) - 2 * pad
+    col_w = inner / 2.0
+    i = 0
+    while i < len(rows):
+        if rows[i][0] == "section":
+            y -= fs * 0.80 / ah                 # clear space before a section
+            ax.text(x0 + pad, y - fs * 0.52 / ah, rows[i][1],
+                    transform=ax.transAxes,
+                    fontsize=fs * 0.84, fontweight="bold",
                     color=T["ink_faint"], ha="left", va="center", zorder=4)
-            y -= fs * 1.2 / ah
+            y -= fs * 1.05 / ah                 # the title band
+            y -= fs * 0.90 / ah                 # lead-in before the items
+            i += 1
+            items = []
+            while i < len(rows) and rows[i][0] != "section":
+                items.append(rows[i])
+                i += 1
+            for k, row in enumerate(items):
+                cx = x0 + pad + (k % 2) * col_w
+                cy = y - fs * 0.86 / ah
+                _kind, colour, label = row[1], row[2], row[3]
+                _swatch(ax, cx + gut / 2, cy, _kind, colour, fs * 0.95, T)
+                label = _fit_text(label, col_w * aw - gut - 8, fs * 0.92)
+                ax.text(cx + gut + 3 / aw, cy, label,
+                        transform=ax.transAxes, fontsize=fs * 0.92,
+                        color=T["ink_soft"], ha="left", va="center", zorder=4)
+                if k % 2 == 1 or k == len(items) - 1:
+                    y -= fs * 1.72 / ah
         else:
-            _kind, colour, label = row[1], row[2], row[3]
-            y -= T["row_h"] / 2 / ah
-            _swatch(ax, x0 + pad + gut / 2, y, _kind, colour, fs, T)
-            ax.text(x0 + pad + gut + 2 / aw, y, label,
-                    transform=ax.transAxes, fontsize=fs, color=T["ink_soft"],
-                    ha="left", va="center", zorder=4)
-            y -= T["row_h"] / 2 / ah
+            cy = y - fs * 0.86 / ah
+            _kind, colour, label = rows[i][1], rows[i][2], rows[i][3]
+            _swatch(ax, x0 + pad + gut / 2, cy, _kind, colour, fs * 0.95, T)
+            label = _fit_text(label, inner * aw - gut - 8, fs * 0.92)
+            ax.text(x0 + pad + gut + 3 / aw, cy, label,
+                    transform=ax.transAxes, fontsize=fs * 0.92,
+                    color=T["ink_soft"], ha="left", va="center", zorder=4)
+            y -= fs * 1.72 / ah
+            i += 1
     return y0
 
 
-_GLANCE_ROW = 3.35          # row pitch of the stat grid, in multiples of fs
+_GLANCE_ROW = 4.0          # row pitch of the stat grid, in multiples of fs
 
 
 def _glance_card_height(stats, fs, T):
     rows = (len(stats) + 1) // 2
-    return T["card_pad"] * 2 + fs * 1.55 + fs * 0.7 + rows * fs * _GLANCE_ROW
+    return (T["card_pad"] * 2 + fs * 1.85 + fs * 1.05
+            + rows * fs * _GLANCE_ROW)
 
 
 def _draw_glance_card(ax, x0, x1, y1, stats, fs, T):
-    """stats: (label, value, sub, colour) — a 2-column stat grid."""
+    """stats: (label, value, sub, colour) — a 2-column stat grid.
+
+    This is the headline information of the graphic: its type is drawn
+    noticeably larger than the other cards (label / value / sub) and the
+    rows breathe, so nothing important is left tiny at the bottom.
+    """
     aw, ah = _ax_pt(ax)
     h = _glance_card_height(stats, fs, T)
     y0 = y1 - h / ah
     add_rrect(ax, x0, y0, x1, y1, T["card_radius"], fc=T["paper"],
               ec=T["card_edge"], lw=T["line_card"], z=2, shadow=True, T=T)
     pad = T["card_pad"] / aw
-    ty = y1 - (T["card_pad"] + fs * 0.72) / ah
+    ty = y1 - (T["card_pad"] + fs * 0.85) / ah
     ax.text(x0 + pad, ty, "AT A GLANCE", transform=ax.transAxes,
-            fontsize=fs, fontweight="bold", color=T["ink"], ha="left",
+            fontsize=fs * 1.05, fontweight="bold", color=T["ink"], ha="left",
             va="center", zorder=4)
-    tw = _text_width_pt("AT A GLANCE", fs, "bold") / aw
-    ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 0.78 / ah] * 2,
-            transform=ax.transAxes, color=T["accent"], lw=1.6, zorder=4,
+    tw = _text_width_pt("AT A GLANCE", fs * 1.05, "bold") / aw
+    ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 0.88 / ah] * 2,
+            transform=ax.transAxes, color=T["accent"], lw=1.8, zorder=4,
             clip_on=False)
-    top = ty - fs * 1.55 / ah
+    top = ty - fs * 2.15 / ah
     col_w = (x1 - x0 - 2 * pad) / 2.0
     for i, (label, value, sub, colour) in enumerate(stats):
         cx = x0 + pad + (i % 2) * col_w + 2 / aw
         cy = top - (i // 2) * fs * _GLANCE_ROW / ah
         ax.text(cx, cy, label, transform=ax.transAxes,
-                fontsize=fs * 0.76, fontweight="bold", color=T["ink_faint"],
+                fontsize=fs * 0.92, fontweight="bold", color=T["ink_soft"],
                 ha="left", va="center", zorder=4)
-        ax.text(cx, cy - fs * 1.25 / ah, value, transform=ax.transAxes,
-                fontsize=fs * 1.22, fontweight="bold", color=colour,
+        ax.text(cx, cy - fs * 1.38 / ah, value, transform=ax.transAxes,
+                fontsize=fs * 1.5, fontweight="bold", color=colour,
                 ha="left", va="center", zorder=4)
         if sub:
-            ax.text(cx, cy - fs * 2.45 / ah, sub, transform=ax.transAxes,
-                    fontsize=fs * 0.76, color=T["ink_faint"],
+            ax.text(cx, cy - fs * 2.72 / ah, sub, transform=ax.transAxes,
+                    fontsize=fs * 0.88, color=T["ink_faint"],
                     ha="left", va="center", zorder=4)
     return y0
 
 
-def _table_card_height(headers, rows, fs, T):
-    return T["card_pad"] * 2 + fs * 1.55 + fs * 1.5 + len(rows) * T["row_h"]
+def _table_card_height(headers, rows, fs, T, subtitle=None):
+    h = T["card_pad"] * 2 + fs * 1.85
+    if subtitle:
+        h += fs * 1.2
+    h += fs * 1.6 + len(rows) * fs * 1.62
+    return h
 
 
 def _draw_table_card(ax, x0, x1, y1, title, headers, rows, fs, T,
-                     dots=None, col_align=None):
-    """headers/rows: list of str; dots: optional per-row risk colour."""
+                     dots=None, col_align=None, subtitle=None):
+    """headers/rows: list of str; dots: optional per-row risk colour.
+
+    Columns are packed to their content (no dead space between them) and
+    separated by thin vertical rules, so the data reads as one clean table.
+    `subtitle` explains what the columns measure when the headers alone
+    cannot (e.g. NEAREST PORTS: distance/bearing of the storm centre).
+    """
     aw, ah = _ax_pt(ax)
-    h = _table_card_height(headers, rows, fs, T)
+    h = _table_card_height(headers, rows, fs, T, subtitle=subtitle)
     y0 = y1 - h / ah
     add_rrect(ax, x0, y0, x1, y1, T["card_radius"], fc=T["paper"],
               ec=T["card_edge"], lw=T["line_card"], z=2, shadow=True, T=T)
     pad = T["card_pad"] / aw
-    ty = y1 - (T["card_pad"] + fs * 0.72) / ah
-    ax.text(x0 + pad, ty, title, transform=ax.transAxes, fontsize=fs,
+    ty = y1 - (T["card_pad"] + fs * 0.85) / ah
+    ax.text(x0 + pad, ty, title, transform=ax.transAxes, fontsize=fs * 1.05,
             fontweight="bold", color=T["ink"], ha="left", va="center",
             zorder=4)
-    tw = _text_width_pt(title, fs, "bold") / aw
-    ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 0.78 / ah] * 2,
-            transform=ax.transAxes, color=T["accent"], lw=1.6, zorder=4,
+    tw = _text_width_pt(title, fs * 1.05, "bold") / aw
+    ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 0.88 / ah] * 2,
+            transform=ax.transAxes, color=T["accent"], lw=1.8, zorder=4,
             clip_on=False)
+    y = ty - fs * 1.7 / ah
+    if subtitle:
+        ax.text(x0 + pad, y, subtitle, transform=ax.transAxes,
+                fontsize=fs * 0.8, color=T["ink_faint"],
+                ha="left", va="center", zorder=4)
+        y -= fs * 1.2 / ah
 
     n = len(headers)
     gut = 10.0 if dots else 0.0          # risk-dot gutter in the name column
     widths = []
     for c in range(n):
-        w = _text_width_pt(headers[c], fs * 0.86, "bold")
+        w = _text_width_pt(headers[c], fs * 0.88, "bold")
         for row in rows:
             # column 0 renders bold, so measure it bold
             w = max(w, _text_width_pt(row[c], fs,
                                       "bold" if c == 0 else "normal"))
-        widths.append(w + 10.0 + (gut if c == 0 else 0.0))
+        widths.append(w + 11.0 + (gut if c == 0 else 0.0))
     total = sum(widths)
     inner = (x1 - x0 - 2 * pad) * aw
     if total > inner:
         widths = [w * inner / total for w in widths]
         total = inner
     frac = [w / aw for w in widths]
+    # packed columns, centred as one block inside the card
+    bx = x0 + pad + (inner - total) / 2.0 / aw
     # never let a cell stick out of its column (e.g. "Krishnapatnam")
-    rows = [[_fit_text(cell, frac[c] * aw - (gut + 6 if c == 0 else 8), fs,
+    rows = [[_fit_text(cell, frac[c] * aw - (gut + 7 if c == 0 else 9), fs,
                        "bold" if c == 0 else "normal")
              for c, cell in enumerate(row)] for row in rows]
 
-    y = ty - fs * 1.35 / ah
-    # header row
-    hx = x0 + pad
+    y_top = y
+    y = y - fs * 0.55 / ah
+    # header row (clear column titles)
+    hx = bx
     for c, head in enumerate(headers):
-        ax.text(hx + frac[c] / 2, y, head, transform=ax.transAxes,
-                fontsize=fs * 0.86, fontweight="bold", color=T["ink_faint"],
-                ha="center", va="center", zorder=4)
+        align = (col_align or ["left"] * n)[c]
+        if c == 0 and dots:
+            cell_x, cell_align = hx + 10.0 / aw, "left"
+        elif align == "left":
+            cell_x, cell_align = hx + 5 / aw, "left"
+        else:
+            cell_x, cell_align = hx + frac[c] / 2, "center"
+        ax.text(cell_x, y, head, transform=ax.transAxes,
+                fontsize=fs * 0.88, fontweight="bold", color=T["ink_soft"],
+                ha=cell_align, va="center", zorder=4)
         hx += frac[c]
     y -= fs * 0.75 / ah
-    ax.plot([x0 + pad, x1 - pad], [y, y], transform=ax.transAxes,
-            color=T["card_edge"], lw=0.9, zorder=4, clip_on=False)
+    ax.plot([bx, bx + total / aw], [y, y], transform=ax.transAxes,
+            color=T["card_edge"], lw=1.0, zorder=4, clip_on=False)
 
+    row_h = fs * 1.62
+    y_bot = y
     for r, row in enumerate(rows):
-        y -= T["row_h"] / 2 / ah
+        y -= row_h / 2 / ah
+        y_bot = y - row_h / 2 / ah
         if r % 2 == 0:
-            ax.add_patch(Rectangle((x0 + pad, y - T["row_h"] / 2 / ah),
-                                   x1 - x0 - 2 * pad, T["row_h"] / ah,
+            ax.add_patch(Rectangle((bx, y - row_h / 2 / ah),
+                                   total / aw, row_h / ah,
                                    transform=ax.transAxes,
                                    facecolor=T["paper_tint"], edgecolor="none",
                                    zorder=3, clip_on=False))
-        hx = x0 + pad
+        hx = bx
         for c, cell in enumerate(row):
             align = (col_align or ["left"] * n)[c]
             if c == 0 and dots:
-                _dot_patch(ax, hx + 4.5 / aw, y, fs * 0.30, fc=dots[r],
+                _dot_patch(ax, hx + 5.0 / aw, y, fs * 0.30, fc=dots[r],
                            ec="#ffffff", lw=0.7, z=5)
-                cell_x = hx + 10.0 / aw
+                cell_x = hx + 11.0 / aw
                 cell_align = "left"
             elif align == "left":
-                cell_x, cell_align = hx + 4 / aw, "left"
+                cell_x, cell_align = hx + 5 / aw, "left"
             else:
                 cell_x, cell_align = hx + frac[c] / 2, "center"
             ax.text(cell_x, y, cell, transform=ax.transAxes, fontsize=fs,
                     fontweight="bold" if c == 0 else "normal",
                     color=T["ink"], ha=cell_align, va="center", zorder=5)
             hx += frac[c]
-        y -= T["row_h"] / 2 / ah
+        y -= row_h / 2 / ah
+    # thin vertical rules between the columns (professional separation
+    # without wide empty gutters)
+    hx = bx
+    for c in range(n - 1):
+        hx += frac[c]
+        ax.plot([hx, hx], [y_bot, y_top], transform=ax.transAxes,
+                color=T["card_edge_soft"], lw=1.0, zorder=4.2,
+                clip_on=False)
     return y0
 
 
 # --- bottom band: key strip + forecast table --------------------------------
+_BAND_PAD = 7.0            # outer breathing room of the band, pt
+_STRIP_H = 19.0            # key-strip chip height, pt
+_ROW_H = 17.5              # forecast-table row height, pt
+
+
 def _band_height_pt(has_strip, has_table, T):
-    h = 5.0
+    h = _BAND_PAD
     if has_strip:
-        h += 15.0 + (4.0 if has_table else 0.0)
+        h += _STRIP_H + (8.0 if has_table else 0.0)
     if has_table:
-        h += 2 * 14.5
-    h += 5.0
+        h += 2 * _ROW_H
+    h += _BAND_PAD
     return h if (has_strip or has_table) else 0.0
 
 
 def _draw_band(ax, T, *, key_items, steps, time_label, speed_label,
-               speed_unit):
+               speed_unit, min_fontsize=6.8):
     ax.axis("off")
     aw, ah = _ax_pt(ax)
-    y = 1.0 - 5.0 / ah
+    y = 1.0 - _BAND_PAD / ah
 
     if key_items:
-        y -= 15.0 / ah
+        y -= _STRIP_H / ah
         fs = T["fs_chip"] + 0.4
         # measure chips, shrink once if they do not fit the band width
         def chip_widths(f):
             ws = []
             for _kind, _colour, label in key_items:
-                ws.append(6 + 13 + 4 + _text_width_pt(label, f, "bold") + 6)
+                ws.append(7 + 14 + 5 + _text_width_pt(label, f, "bold") + 7)
             return ws
         ws = chip_widths(fs)
         avail = aw - 8
-        if sum(ws) + 5 * (len(ws) - 1) > avail:
-            fs = max(6.0, fs * avail / (sum(ws) + 5 * (len(ws) - 1)))
+        if sum(ws) + 6 * (len(ws) - 1) > avail:
+            fs = max(6.0, fs * avail / (sum(ws) + 6 * (len(ws) - 1)))
             ws = chip_widths(fs)
         x = 4.0 / aw
         for (kind, colour, label), w in zip(key_items, ws):
             w_f = w / aw
-            add_rrect(ax, x, y, x + w_f, y + 15.0 / ah, 3.0, fc=T["paper"],
-                      ec=T["card_edge"], lw=0.9, z=2, T=T)
-            _swatch(ax, x + (6 + 6.5) / aw, y + 7.5 / ah, kind, colour,
+            add_rrect(ax, x, y, x + w_f, y + _STRIP_H / ah, 3.0,
+                      fc=T["paper"], ec=T["card_edge"], lw=1.0, z=2, T=T)
+            _swatch(ax, x + (7 + 7) / aw, y + _STRIP_H / 2 / ah, kind, colour,
                     fs + 1.0, T, z=3)
-            ax.text(x + (6 + 13 + 4) / aw, y + 7.5 / ah, label,
+            ax.text(x + (7 + 14 + 5) / aw, y + _STRIP_H / 2 / ah, label,
                     transform=ax.transAxes, fontsize=fs, fontweight="bold",
                     color=T["ink_soft"], ha="left", va="center", zorder=3)
-            x += w_f + 5.0 / aw
-        y -= 4.0 / ah
+            x += w_f + 6.0 / aw
+        y -= 8.0 / ah
 
     if steps:
         fs = T["fs_table"]
-        row_h = 14.5
-        n = len(steps) + 1
-        label_w = max(_text_width_pt(time_label, fs, "bold"),
-                      _text_width_pt(speed_label, fs, "bold")) + 12
-        col_w = (aw - 8 - label_w) / max(1, len(steps))
-        need = fs * 0.0
-        # shrink if a time header cannot fit its column
-        widest = max(_text_width_pt(t.strftime("%H/%d%b").upper(), fs, "bold")
-                     for t, _v in steps) + 8
-        if widest > col_w:
-            fs = max(6.2, fs * col_w / widest)
-            label_w = max(_text_width_pt(time_label, fs, "bold"),
-                          _text_width_pt(speed_label, fs, "bold")) + 12
-            col_w = (aw - 8 - label_w) / max(1, len(steps))
+        cell_pad = 12.0
+        time_strs = [t.strftime("%H/%d%b").upper() for t, _v in steps]
+        val_strs = ["--" if v is None else f"{int(round(v))}{speed_unit}"
+                    for _t, v in steps]
 
-        y0 = y - 2 * row_h / ah
-        add_rrect(ax, 4 / aw, y0, 1 - 4 / aw, y, 3.0, fc=T["paper"],
-                  ec=T["card_edge"], lw=1.0, z=2, shadow=True, T=T)
-        lx0, lx1 = 4 / aw, (4 + label_w) / aw
-        # label column (navy)
+        def measure(f, lp):
+            lw = max(_text_width_pt(time_label, f, "bold"),
+                     _text_width_pt(speed_label, f, "bold")) + lp
+            cw = max(max(_text_width_pt(s, f, "bold") for s in time_strs),
+                     max(_text_width_pt(s, f, "bold") for s in val_strs))
+            return lw, cw + 2 * cell_pad
+
+        n = len(steps)
+        label_w, col_w = measure(fs, 20.0)
+        table_w = label_w + n * col_w
+        avail = aw - 8
+        if table_w > avail:                    # shrink to fit the band
+            fs = max(min_fontsize, fs * avail / table_w)
+            label_w, col_w = measure(fs, 20.0)
+            table_w = label_w + n * col_w
+        elif table_w < 0.70 * avail:
+            # grow the columns a little so the block balances in the band,
+            # but never leave wide dead gutters between the cells
+            grow = min((0.70 * avail - table_w) / n, cell_pad)
+            col_w += grow
+            table_w = label_w + n * col_w
+
+        x_left = (aw - table_w) / 2.0          # tight block, centred
+        y0 = y - 2 * _ROW_H / ah
+        add_rrect(ax, x_left / aw, y0, (x_left + table_w) / aw, y, 3.0,
+                  fc=T["paper"], ec=T["card_edge"], lw=1.1, z=2,
+                  shadow=True, T=T)
+        lx0, lx1 = x_left / aw, (x_left + label_w) / aw
+        # row-title column (navy) — bold, so every row says what it holds
         ax.add_patch(Rectangle((lx0, y0), lx1 - lx0, y - y0,
                                transform=ax.transAxes, facecolor=T["navy"],
                                edgecolor="none", zorder=3, clip_on=False))
-        ax.text((lx0 + lx1) / 2, y - row_h / 2 / ah, time_label,
-                transform=ax.transAxes, fontsize=fs * 0.92,
+        ax.text((lx0 + lx1) / 2, y - _ROW_H / 2 / ah, time_label,
+                transform=ax.transAxes, fontsize=fs,
                 fontweight="bold", color=T["on_dark"], ha="center",
                 va="center", zorder=4)
-        ax.text((lx0 + lx1) / 2, y - 1.5 * row_h / ah, speed_label,
-                transform=ax.transAxes, fontsize=fs * 0.92,
+        ax.text((lx0 + lx1) / 2, y - 1.5 * _ROW_H / ah, speed_label,
+                transform=ax.transAxes, fontsize=fs,
                 fontweight="bold", color=T["on_dark"], ha="center",
                 va="center", zorder=4)
         for i, (t, val) in enumerate(steps):
-            cx0 = lx1 + i * col_w / aw
-            cx1 = cx0 + col_w / aw
+            cx0 = (x_left + label_w + i * col_w) / aw
+            cx1 = (x_left + label_w + (i + 1) * col_w) / aw
             if i % 2 == 0:
                 ax.add_patch(Rectangle((cx0, y0), cx1 - cx0, y - y0,
                                        transform=ax.transAxes,
                                        facecolor=T["paper_tint"],
                                        edgecolor="none", zorder=3,
                                        clip_on=False))
-            ax.text((cx0 + cx1) / 2, y - row_h / 2 / ah,
-                    t.strftime("%H/%d%b").upper(), transform=ax.transAxes,
+            ax.text((cx0 + cx1) / 2, y - _ROW_H / 2 / ah, time_strs[i],
+                    transform=ax.transAxes,
                     fontsize=fs, fontweight="bold", color=T["ink"],
                     ha="center", va="center", zorder=4)
             if val is None:
-                txt, col = "--", T["ink_faint"]
+                col = T["ink_faint"]
             else:
-                txt, col = f"{int(round(val))}{speed_unit}", wind_color(
-                    val / KNOTS_TO_KMH)
-            ax.text((cx0 + cx1) / 2, y - 1.5 * row_h / ah, txt,
+                col = wind_color(val / KNOTS_TO_KMH)
+            ax.text((cx0 + cx1) / 2, y - 1.5 * _ROW_H / ah, val_strs[i],
                     transform=ax.transAxes, fontsize=fs, fontweight="bold",
                     color=col, ha="center", va="center", zorder=4)
-            ax.plot([cx1, cx1], [y0, y], transform=ax.transAxes,
-                    color=T["card_edge_soft"], lw=0.8, zorder=3.5,
+        # clean vertical rules between the columns (tight, professional
+        # separation instead of wide empty space)
+        for i in range(n):
+            rx = (x_left + label_w + i * col_w) / aw
+            ax.plot([rx, rx], [y0, y], transform=ax.transAxes,
+                    color=T["card_edge"], lw=1.1, zorder=3.5,
                     clip_on=False)
-        ax.plot([lx0, 1 - 4 / aw], [y - row_h / ah] * 2,
-                transform=ax.transAxes, color=T["card_edge_soft"], lw=0.9,
+        # rule between the two rows
+        ax.plot([lx0, (x_left + table_w) / aw], [y - _ROW_H / ah] * 2,
+                transform=ax.transAxes, color=T["card_edge_soft"], lw=1.0,
                 zorder=3.6, clip_on=False)
 
 
@@ -746,10 +851,10 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
 
     for spine in ax.spines.values():
         spine.set_color(T["map_edge"])
-        spine.set_linewidth(1.0)
-    ax.tick_params(axis="both", which="both", length=3, width=0.8,
-                   color=T["map_edge"], labelcolor=T["ink_faint"],
-                   labelsize=T["fs_tick"], pad=2)
+        spine.set_linewidth(1.2)
+    ax.tick_params(axis="both", which="both", length=4, width=1.0,
+                   color=T["map_edge"], labelcolor=T["ink_soft"],
+                   labelsize=T["fs_tick"], pad=3.5)
     xs = _nice_step(lon_max - lon_min)
     ys = _nice_step(lat_max - lat_min)
     ax.set_xticks(np.arange(np.ceil(lon_min / xs) * xs, lon_max, xs))
@@ -774,7 +879,7 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
                 ax.add_patch(Circle((lon, lat), r, facecolor=colour,
                                     alpha=0.05, linewidth=0, zorder=2))
                 ax.add_patch(Circle((lon, lat), r, fill=False,
-                                    edgecolor="#ffffff", linewidth=2.4,
+                                    edgecolor="#ffffff", linewidth=2.8,
                                     alpha=0.55, zorder=4.4))
                 ax.add_patch(Circle((lon, lat), r, fill=False,
                                     edgecolor=colour,
@@ -784,29 +889,30 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
     # ---- uncertainty cone --------------------------------------------------
     if cone_pts is not None:
         ax.add_patch(Polygon(cone_pts, closed=True,
-                             facecolor=T["cone_fill"], alpha=0.16,
+                             facecolor=T["cone_fill"], alpha=0.18,
                              edgecolor="none", zorder=3))
         ax.add_patch(Polygon(cone_pts, closed=True, fill=False,
-                             edgecolor=T["cone_edge"], alpha=0.55,
-                             linewidth=1.0, zorder=3.2))
+                             edgecolor=T["cone_edge"], alpha=0.8,
+                             linewidth=1.5, zorder=3.2))
 
     # ---- tracks ------------------------------------------------------------
     if track_obs is not None and len(track_obs) >= 2:
         ax.plot(track_obs["Longitude"], track_obs["Latitude"],
-                color=T["obs_track"], lw=1.3, linestyle=(0, (4, 2.2)),
+                color=T["obs_track"], lw=2.1, linestyle=(0, (4, 2.2)),
                 alpha=0.9, zorder=5)
     if bias_track is not None:
-        ax.plot(bias_track[1], bias_track[0], color=T["bias"], lw=1.5,
+        ax.plot(bias_track[1], bias_track[0], color=T["bias"], lw=2.3,
                 linestyle=(0, (5, 3)), alpha=0.85, zorder=5.1)
     if fc_track is not None:
-        ax.plot(fc_track[1], fc_track[0], color=T["accent"], lw=2.1,
+        # fc_track is (lats, lons) — plot x=lons, y=lats
+        ax.plot(fc_track[1], fc_track[0], color=T["accent"], lw=3.4,
                 solid_capstyle="round", zorder=5.2)
         # direction arrow head at the end of the forecast track
         if smooth is not None and len(smooth[0]) > 4:
             lx, ly = smooth[0][-1], smooth[1][-1]
             px, py = smooth[0][-4], smooth[1][-4]
             ang = np.arctan2(ly - py, lx - px)
-            size = 0.016 * (ax.get_ylim()[1] - ax.get_ylim()[0])
+            size = 0.021 * (ax.get_ylim()[1] - ax.get_ylim()[0])
             tri = np.array([
                 [lx + size * np.cos(ang), ly + size * np.sin(ang)],
                 [lx + size * 0.62 * np.cos(ang + 2.5),
@@ -822,37 +928,37 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
         for lat, lon, wind in zip(track_obs["Latitude"],
                                   track_obs["Longitude"],
                                   track_obs["Intensity"]):
-            ax.scatter(lon, lat, s=30, color=wind_color(wind),
-                       edgecolor="#ffffff", linewidth=1.2, zorder=6)
+            ax.scatter(lon, lat, s=72, color=wind_color(wind),
+                       edgecolor="#ffffff", linewidth=1.6, zorder=6)
         clat, clon = float(track_obs["Latitude"].iloc[-1]), \
             float(track_obs["Longitude"].iloc[-1])
-        ax.scatter(clon, clat, s=120, facecolors="none",
-                   edgecolors=T["accent"], linewidths=1.5, zorder=6.1)
-        ax.scatter(clon, clat, s=210, facecolors="none",
-                   edgecolors=T["accent"], linewidths=1.0, alpha=0.35,
+        ax.scatter(clon, clat, s=260, facecolors="none",
+                   edgecolors=T["accent"], linewidths=2.0, zorder=6.1)
+        ax.scatter(clon, clat, s=430, facecolors="none",
+                   edgecolors=T["accent"], linewidths=1.4, alpha=0.35,
                    zorder=6.1)
     if track_for is not None and len(track_for):
         for lat, lon, wind in zip(track_for["Latitude"],
                                   track_for["Longitude"],
                                   track_for["Intensity"]):
-            ax.scatter(lon, lat, s=34, color=wind_color(wind),
-                       edgecolor="#ffffff", linewidth=1.2, zorder=6.2)
+            ax.scatter(lon, lat, s=82, color=wind_color(wind),
+                       edgecolor="#ffffff", linewidth=1.6, zorder=6.2)
 
     # ---- ports -------------------------------------------------------------
     for name, plat, plon, risk in visible_ports:
-        ax.scatter(plon, plat, s=30, color=risk["color"],
-                   edgecolor="#ffffff", linewidth=1.1, zorder=6)
+        ax.scatter(plon, plat, s=72, color=risk["color"],
+                   edgecolor="#ffffff", linewidth=1.5, zorder=6)
 
     # ---- landfall / AI -----------------------------------------------------
     if landfall_info is not None:
         ax.plot(landfall_info["lon"], landfall_info["lat"], marker="X",
-                markersize=11, color=T["landfall"],
-                markeredgecolor="#ffffff", markeredgewidth=1.3,
+                markersize=18, color=T["landfall"],
+                markeredgecolor="#ffffff", markeredgewidth=1.8,
                 linestyle="none", zorder=7)
     if ml_point is not None:
-        ax.plot(ml_point[1], ml_point[0], marker="*", markersize=15,
+        ax.plot(ml_point[1], ml_point[0], marker="*", markersize=22,
                 markerfacecolor="#fbbf24", markeredgecolor="#78350f",
-                markeredgewidth=0.7, linestyle="none", zorder=7)
+                markeredgewidth=0.9, linestyle="none", zorder=7)
 
 
 def _scale_bar(ax, T, lon_span, lat_mid):
@@ -869,9 +975,9 @@ def _scale_bar(ax, T, lon_span, lat_mid):
     fig = ax.figure
     pt2px = fig.dpi / 72.0
     aw_pt, ah_pt = _ax_pt(ax)
-    fs = T["fs_tiny"] + 0.6
+    fs = T["fs_tiny"] + 1.4
     bar_w = 0.16 * aw_pt                 # pt
-    bar_h = 3.4                          # pt
+    bar_h = 4.6                          # pt
     km_w = _text_width_pt("KM", fs, "bold")
     box_w = 6 + bar_w + 5 + km_w + 6     # pt
     box_h = 5 + fs * 1.15 + 2 + bar_h + 2 + fs * 1.15 + 4
@@ -915,14 +1021,14 @@ def _north_arrow(ax, T):
     fig = ax.figure
     pt2px = fig.dpi / 72.0
     ax_bb = ax.get_window_extent(fig.canvas.get_renderer())
-    fs = T["fs_small"] + 2.0
+    fs = T["fs_small"] + 3.2
     x_px = ax_bb.x1 - 18 * pt2px
     y_px = ax_bb.y1 - 14 * pt2px
     xa = (x_px - ax_bb.x0) / ax_bb.width
     ya = (y_px - ax_bb.y0) / ax_bb.height
     aw, ah = _ax_pt(ax)
-    h = 15 / ah
-    w = 6.0 / aw
+    h = 19 / ah
+    w = 7.5 / aw
     ax.add_patch(Polygon([(xa, ya), (xa - w, ya - h), (xa, ya - h * 0.72),
                           (xa + w, ya - h)], closed=True,
                          facecolor=T["ink"], edgecolor="none",
@@ -1028,14 +1134,15 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         try:
             cone_pts, s_lon, s_lat = create_nhc_cone(
                 ext_lon, ext_lat, initial_uncertainty=0.00, growth_rate=UCR)
-            smooth = (s_lon, s_lat)
-            fc_track = (s_lon, s_lat)
+            smooth = (s_lon, s_lat)          # (lons, lats) — for the arrow
+            fc_track = (s_lat, s_lon)        # (lats, lons) — like bias_track
         except Exception as e:
             print(f"[WARN] Cone error ({e}) - drawing line only")
-            fc_track = (ext_lon, ext_lat)
+            fc_track = (np.concatenate([[prev_lat], fc["Latitude"].values]),
+                        np.concatenate([[prev_lon], fc["Longitude"].values]))
     elif has_for and prev_lat is not None:
-        fc_track = (np.concatenate([[prev_lon], fc["Longitude"].values]),
-                    np.concatenate([[prev_lat], fc["Latitude"].values]))
+        fc_track = (np.concatenate([[prev_lat], fc["Latitude"].values]),
+                    np.concatenate([[prev_lon], fc["Longitude"].values]))
 
     if SHOW_BIAS_TRACK and fc_track is not None and has_obs and len(obs) >= 2:
         c1 = (obs["Latitude"].iloc[-2], obs["Longitude"].iloc[-2])
@@ -1043,7 +1150,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         last_dir = get_bearing(c1, c2)
         try:
             bc_lats, bc_lons = apply_simple_bias(
-                np.asarray(fc_track[1]), np.asarray(fc_track[0]),
+                np.asarray(fc_track[0]), np.asarray(fc_track[1]),
                 last_lon=prev_lon, last_wind=ci, last_dir=last_dir)
             bias_track = (bc_lats, bc_lons)
         except Exception as e:
@@ -1089,8 +1196,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             on_track |= {wind_color(w) for w in obs["Intensity"]}
         if has_for:
             on_track |= {wind_color(w) for w in fc["Intensity"]}
-        int_rows = [(("item", "dot", c, lbl) )
-                    for _thr, _k, lbl, c in INTENSITY_SCALE if c in on_track]
+        # weakest -> strongest: Invest Area / Low, Tropical Depression, ...
+        int_rows = [(("item", "dot", c, lbl))
+                    for _thr, _k, lbl, c in INTENSITY_LEGEND_ORDER
+                    if c in on_track]
         if int_rows:
             key_rows.append(("section", "STORM INTENSITY"))
             key_rows.extend(int_rows)
@@ -1186,31 +1295,36 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     # ---------------- layout ------------------------------------------------
     has_side = bool(key_rows) or bool(stats) or bool(port_rows) or bool(ai_rows)
     has_band = bool(key_items) or bool(steps)
-    m_l, m_r = 0.030, 0.014      # left margin carries the °N tick labels
-    m_t = m_b = 0.010
-    header_h = 0.092
-    footer_h = 0.036 if cfg.SHOW_FOOTER else 0.0
-    gap = 0.010
+    m_l, m_r = 0.032, 0.016      # left margin carries the °N tick labels
+    m_t = m_b = 0.012
+    header_h = 0.098
+    footer_h = 0.042 if cfg.SHOW_FOOTER else 0.0
+    gap = 0.012
     band_h_pt = _band_height_pt(bool(key_items), bool(steps), T)
     band_h = band_h_pt / (FIG_H_IN * 72.0) if has_band else 0.0
     side_w = 0.262 if has_side else 0.0
 
     foot_top = m_b + footer_h + (0.006 if footer_h else 0.0)
-    band_y0 = foot_top
-    band_y1 = band_y0 + band_h
-    map_y0 = band_y1 + (0.016 if has_band else 0.008)   # room for °E ticks
     map_y1 = 1.0 - m_t - header_h - gap
-    map_h = map_y1 - map_y0
     side_x0 = 1.0 - m_r - side_w
     map_x1 = side_x0 - (gap if has_side else 0.0)
     map_w = map_x1 - m_l
+    # the band sits directly under the map (map width); the sidebar column
+    # runs all the way down beside it, so the cards get every point of
+    # height they need and nothing important is squeezed to tiny type
+    band_y0 = foot_top
+    band_y1 = band_y0 + band_h
+    map_y0 = band_y1 + (0.022 if has_band else 0.012)   # room for °E ticks
+    map_h = map_y1 - map_y0
+    side_y0 = foot_top if has_band else map_y0
+    side_h = map_y1 - side_y0
 
     fig = plt.figure(figsize=(FIG_W_IN, FIG_H_IN), dpi=OUTPUT_DPI)
     fig.patch.set_facecolor(T["page_bg"])
     ax_head = fig.add_axes([m_l, 1 - m_t - header_h, 1 - m_l - m_r, header_h])
     ax_map = fig.add_axes([m_l, map_y0, map_w, map_h])
-    ax_side = fig.add_axes([side_x0, map_y0, side_w, map_h]) if has_side else None
-    ax_band = fig.add_axes([m_l, band_y0, 1 - m_l - m_r, band_h]) if has_band else None
+    ax_side = fig.add_axes([side_x0, side_y0, side_w, side_h]) if has_side else None
+    ax_band = fig.add_axes([m_l, band_y0, map_w, band_h]) if has_band else None
     ax_foot = fig.add_axes([m_l, m_b, 1 - m_l - m_r, footer_h]) if footer_h else None
 
     # ---------------- map window --------------------------------------------
@@ -1269,37 +1383,45 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         _draw_band(ax_band, T, key_items=key_items, steps=steps,
                    time_label=cfg.FORECAST_TIME_LABEL,
                    speed_label=cfg.FORECAST_SPEED_LABEL,
-                   speed_unit=cfg.FORECAST_SPEED_UNIT)
+                   speed_unit=cfg.FORECAST_SPEED_UNIT,
+                   min_fontsize=cfg.FORECAST_TABLE_MIN_FONTSIZE)
 
-    # sidebar packing: solve one font scale so every card fits the column
+    # sidebar packing: solve one font scale so every card fits the column.
+    # The AT A GLANCE card is the headline info and is drawn first (top of
+    # the sidebar) with the largest type; the key legend packs denser.
     if ax_side is not None:
         ax_side.axis("off")
         cards = []
-        if key_rows:
-            cards.append(("key", key_rows))
         if stats:
             cards.append(("glance", stats))
+        if key_rows:
+            cards.append(("key", key_rows))
         if port_rows:
-            cards.append(("table", ("NEAREST PORTS", ["PORT", "DIST", "DIR"],
-                                    port_rows, port_dots)))
+            cards.append(("table", ("NEAREST PORTS",
+                                    ["PORT", "DIST (KM)", "DIRECTION"],
+                                    port_rows, port_dots,
+                                    "centre distance & bearing from port")))
         if ai_rows:
             cards.append(("table", ("AI OVERLAYS", ["OVERLAY", "VALUE"],
-                                    ai_rows, None)))
+                                    ai_rows, None, None)))
         _aw, ah_pt = _ax_pt(ax_side)
-        gaps = cfg and (len(cards) - 1) * T["card_gap"]
+        fs_mult = {"glance": 1.28, "key": 0.88, "table": 1.0}
+        gaps = (len(cards) - 1) * T["card_gap"]
         def total_at(fs):
             tot = 0.0
             for kind, payload in cards:
+                f = fs * fs_mult[kind]
                 if kind == "key":
-                    tot += _key_card_height(payload, fs, T)
+                    tot += _key_card_height(payload, f, T)
                 elif kind == "glance":
-                    tot += _glance_card_height(payload, fs, T)
+                    tot += _glance_card_height(payload, f, T)
                 else:
-                    _t, _h, rows, _d = payload
-                    tot += _table_card_height(_h, rows, fs, T)
+                    _t, _h, rows, _d, _sub = payload
+                    tot += _table_card_height(_h, rows, f, T, subtitle=_sub)
             return tot + gaps
         fs = T["fs_body"]
-        for cand in (1.0, 0.95, 0.90, 0.85, 0.80, 0.76, 0.72):
+        for cand in (1.30, 1.24, 1.18, 1.12, 1.06, 1.0, 0.95, 0.90,
+                     0.85, 0.80, 0.76, 0.72):
             if total_at(T["fs_body"] * cand) <= ah_pt:
                 fs = T["fs_body"] * cand
                 break
@@ -1308,14 +1430,15 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         y = 1.0
         x0, x1 = 0.0, 1.0
         for kind, payload in cards:
+            f = fs * fs_mult[kind]
             if kind == "key":
-                y = _draw_key_card(ax_side, x0, x1, y, payload, fs, T)
+                y = _draw_key_card(ax_side, x0, x1, y, payload, f, T)
             elif kind == "glance":
-                y = _draw_glance_card(ax_side, x0, x1, y, payload, fs, T)
+                y = _draw_glance_card(ax_side, x0, x1, y, payload, f, T)
             else:
-                title, heads, rows, dots = payload
+                title, heads, rows, dots, sub = payload
                 y = _draw_table_card(ax_side, x0, x1, y, title, heads, rows,
-                                     fs, T, dots=dots,
+                                     f, T, dots=dots, subtitle=sub,
                                      col_align=["left", "center", "center"])
             y -= T["card_gap"] / ah_pt
 
@@ -1365,9 +1488,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                                     0.5 * (lat_min + lat_max)))
     obstacles.append(_north_arrow(ax_map, T))
     ax_bb = ax_map.get_window_extent(fig.canvas.get_renderer())
-    marker_r_px = 13.0
+    marker_r_px = pt2px * T["fs_chip"] * 0.95
 
-    def place_chip(text, lon, lat, fs, edge, tcol, candidates, lw=0.9,
+    def place_chip(text, lon, lat, fs, edge, tcol, candidates, lw=1.1,
                    alpha=0.93, z=8.5, avoid_own=None, leader=True):
         base = ax_map.transData.transform((lon, lat))
         w_pt = _text_width_pt(text, fs, "bold")
@@ -1395,7 +1518,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             from matplotlib.transforms import IdentityTransform
             ax_map.plot([base[0], base[0] + dx * pt2px],
                         [base[1], base[1] + dy * pt2px],
-                        color=T["ink_faint"], lw=0.7, alpha=0.8,
+                        color=T["ink_faint"], lw=1.0, alpha=0.8,
                         zorder=z - 0.4, clip_on=False,
                         transform=IdentityTransform(),
                         solid_capstyle="round")
@@ -1404,7 +1527,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             textcoords="offset points", fontsize=fs, fontweight="bold",
             color=tcol, ha=ha, va=va, zorder=z,
             bbox=dict(facecolor="#ffffff", alpha=alpha, edgecolor=edge,
-                      linewidth=lw, boxstyle=f"round,pad={0.40:.2f}"))
+                      linewidth=lw, boxstyle=f"round,pad={0.42:.2f}"))
         placed.append(box)
         return box
 
@@ -1415,9 +1538,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             else f" \u00b7 {int(pressure)} HPA"
         place_chip(f"NOW {ci_tnd:%d/%HZ} \u00b7 {int(ci)} KT{p_txt}",
                    prev_lon, prev_lat, fs_chip, T["accent"], T["ink"],
-                   [(8, 8, "left", "bottom"), (-8, 8, "right", "bottom"),
-                    (8, -8, "left", "top"), (-8, -8, "right", "top"),
-                    (0, 12, "center", "bottom"), (0, -12, "center", "top")])
+                   [(11, 11, "left", "bottom"), (-11, 11, "right", "bottom"),
+                    (11, -11, "left", "top"), (-11, -11, "right", "top"),
+                    (0, 15, "center", "bottom"), (0, -15, "center", "top"),
+                    (15, 0, "left", "center"), (-15, 0, "right", "center")])
     # 2) forecast point chips
     if has_for:
         for i in range(len(fc)):
@@ -1426,9 +1550,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             wind = fc["Intensity"].iloc[i]
             place_chip(f"{fc['tnd'].iloc[i]:%d/%HZ} \u00b7 {int(wind)} KT",
                        lon, lat, fs_chip, T["card_edge"], T["ink"],
-                       [(7, 7, "left", "bottom"), (11, 0, "left", "center"),
-                        (-7, 7, "right", "bottom"), (0, 11, "center", "bottom"),
-                        (7, -7, "left", "top")])
+                       [(10, 10, "left", "bottom"), (14, 0, "left", "center"),
+                        (-10, 10, "right", "bottom"), (0, 14, "center", "bottom"),
+                        (10, -10, "left", "top"), (-14, 0, "right", "center"),
+                        (-10, -10, "right", "top"), (0, -14, "center", "top")])
     # 3) landfall chip
     if cfg.SHOW_LANDFALL and landfall_info is not None:
         txt = f"LANDFALL {landfall_info['time_str']}"
@@ -1436,28 +1561,33 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             txt += f" \u00b7 {landfall_info['place']}"
         place_chip(txt, landfall_info["lon"], landfall_info["lat"],
                    fs_chip, T["landfall"], "#7f1d1d",
-                   [(-8, -8, "right", "top"), (-12, 0, "right", "center"),
-                    (-8, 8, "right", "bottom"), (0, 12, "center", "bottom"),
-                    (8, -8, "left", "top")], lw=1.2, alpha=0.95)
+                   [(-11, -11, "right", "top"), (-15, 0, "right", "center"),
+                    (-11, 11, "right", "bottom"), (0, 15, "center", "bottom"),
+                    (11, -11, "left", "top"), (0, -15, "center", "top")],
+                   lw=1.6, alpha=0.95)
     # 4) AI chip
     if ml_point is not None:
         place_chip("AI POSITION", ml_point[1], ml_point[0], fs_chip,
                    "#b45309", "#78350f",
-                   [(0, -12, "center", "top"), (0, 12, "center", "bottom"),
-                    (-10, 0, "right", "center"), (10, 0, "left", "center")])
+                   [(0, -15, "center", "top"), (0, 15, "center", "bottom"),
+                    (-13, 0, "right", "center"), (13, 0, "left", "center")])
     # 5) port chips
     if cfg.SHOW_PORTS:
         for name, plat, plon, band in visible_ports:
             base = ax_map.transData.transform((plon, plat))
-            fs_p = fs_chip + 0.2
+            fs_p = fs_chip + 0.4
             w_pt = _text_width_pt(name, fs_p, "bold")
-            pad_pt = 0.30 * fs_p + 1.5
-            h_pt = fs_p * 1.25
+            pad_pt = 0.35 * fs_p + 1.5
+            h_pt = fs_p * 1.28
             ok = False
-            for dx, dy, ha, va in ((0, 9, "center", "bottom"),
-                                   (10, 0, "left", "center"),
-                                   (-10, 0, "right", "center"),
-                                   (0, -9, "center", "top")):
+            for dx, dy, ha, va in ((0, 12, "center", "bottom"),
+                                   (13, 0, "left", "center"),
+                                   (-13, 0, "right", "center"),
+                                   (0, -12, "center", "top"),
+                                   (10, 10, "left", "bottom"),
+                                   (-10, 10, "right", "bottom"),
+                                   (10, -10, "left", "top"),
+                                   (-10, -10, "right", "top")):
                 box = _chip_bbox(base, (dx * pt2px, dy * pt2px), ha, va,
                                  w_pt, pad_pt, h_pt, pt2px)
                 if (box[0] < ax_bb.x0 + 2 or box[1] < ax_bb.y0 + 2

@@ -31,6 +31,10 @@ INTENSITY_SCALE = (
     (0,   "low",  "Invest Area / Low", "#4ade80"),
 )
 
+# Display order for the map key: weakest -> strongest
+# (Invest Area, Tropical Depression, ... Category 5).
+INTENSITY_LEGEND_ORDER = tuple(reversed(INTENSITY_SCALE))
+
 # Wind-radius rings (forecast isotachs), smallest radius first.
 WIND_RADII = (
     # (column,   legend label, colour)
@@ -87,24 +91,26 @@ OFFICIAL = {
     "bias":        "#7c3aed",
 
     # ---- type scale (points) ----------------------------------------------
-    "fs_title":    17.0,
-    "fs_subtitle": 8.6,
-    "fs_card_title": 8.4,
-    "fs_body":     8.0,
-    "fs_small":    6.9,
-    "fs_tiny":     6.2,
-    "fs_table":    8.0,
-    "fs_chip":     7.0,
-    "fs_footer":   8.0,
-    "fs_tick":     7.0,
+    # Phone-friendly sizes: the graphic is usually viewed on a mobile screen,
+    # so every label is sized to stay legible when the PNG is width-fit.
+    "fs_title":    18.5,
+    "fs_subtitle": 10.0,
+    "fs_card_title": 10.0,
+    "fs_body":     9.6,
+    "fs_small":    8.4,
+    "fs_tiny":     7.6,
+    "fs_table":    10.4,
+    "fs_chip":     9.8,
+    "fs_footer":   9.8,
+    "fs_tick":     9.2,
 
     # ---- metrics (points) --------------------------------------------------
-    "card_pad":    7.0,         # inner padding of a card
-    "card_gap":    7.0,         # gap between stacked cards
-    "card_radius": 5.0,         # corner radius
-    "row_h":       12.6,        # legend / table row height
-    "line_card":   1.0,
-    "line_ring":   1.1,
+    "card_pad":    9.0,         # inner padding of a card
+    "card_gap":    10.0,        # gap between stacked cards (section spacing)
+    "card_radius": 6.0,         # corner radius
+    "row_h":       14.4,        # legend / table row height
+    "line_card":   1.2,
+    "line_ring":   1.7,
 }
 
 

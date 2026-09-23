@@ -16,14 +16,14 @@ normally you never touch a `.py` file.
 |  HEADER   brand chip · storm title · validity · issued card  |
 +---------------------------------------------+----------------+
 |                                             |  SIDEBAR       |
-|  MAP                                        |  MAP KEY       |
-|  observed + forecast track, cone,           |  AT A GLANCE   |
+|  MAP                                        |  AT A GLANCE   |
+|  observed + forecast track, cone,           |  MAP KEY       |
 |  wind radii, ports, landfall,               |  NEAREST PORTS |
 |  collision-free label chips,                |  AI OVERLAYS   |
 |  scale bar, north arrow                     |                |
-+---------------------------------------------+----------------+
++---------------------------------------------+                |
 |  BAND   map key strip · forecast table (TIME / WIND rows)    |
-+--------------------------------------------------------------+
++---------------------------------------------+----------------+
 |  FOOTER   wind · pressure · updated          © brand         |
 +--------------------------------------------------------------+
 ```

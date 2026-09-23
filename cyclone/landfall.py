@@ -4,13 +4,17 @@ Landfall estimation & closest-approach-per-port calculations.
 Pure helpers — no plotting here. Used by cyclone/plotting.py (map output),
 cyclone/cli.py (console + feature context).
 
-The coastline below is a deliberately coarse (0.3-0.7 deg spacing) polyline
-set covering the North Indian Ocean map area. It is accurate enough to
-estimate *where and when* a forecast track first reaches the coast, but it
-is NOT a navigational dataset.
+Where the track comes ashore is measured on the SAME vector coastline that
+the map draws (``assets/geo/land.geojson``), so the landfall marker always
+sits exactly on the drawn coast/land border shape.  The coarse hand-drawn
+``COASTLINES`` polylines below are only a fallback for when that asset is
+missing.
 """
 
 from math import cos, sin, radians, degrees, atan2, hypot, sqrt, isfinite
+from functools import lru_cache
+from pathlib import Path
+import json
 
 import pandas as pd
 
@@ -94,6 +98,57 @@ COASTLINES = [
 
 
 # --------------------------------------------------------------------------
+# Coast polylines used for the landfall crossing
+# --------------------------------------------------------------------------
+_GEO_DIR = Path(__file__).resolve().parent.parent / "assets" / "geo"
+
+
+@lru_cache(maxsize=4)
+def load_coast_rings(geojson_path=None):
+    """Coast polylines as lists of (lon, lat) — the map's own border shape.
+
+    Reads the same ``assets/geo/land.geojson`` polygons that
+    ``cyclone/basemap.py`` draws, so the estimated landfall lies exactly on
+    the coastline shown in the graphic.  Falls back to the coarse
+    ``COASTLINES`` sketch when the asset is missing.
+    """
+    path = Path(geojson_path) if geojson_path else (_GEO_DIR / "land.geojson")
+    rings = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        for feat in data.get("features", ()):
+            geom = feat.get("geometry") or {}
+            if geom.get("type") != "Polygon":
+                continue
+            coords = geom.get("coordinates") or []
+            if not coords:
+                continue
+            ring = [(float(x), float(y)) for x, y in coords[0]]
+            if len(ring) >= 4:
+                rings.append(ring)
+    except (OSError, ValueError):
+        rings = []
+    return tuple(rings) if rings else tuple(tuple(r) for r in COASTLINES)
+
+
+def _rings_near_track(polylines, pts, margin=2.0):
+    """Polylines whose bbox meets the track corridor (cheap pre-filter)."""
+    xs = [p[1] for p in pts]
+    ys = [p[2] for p in pts]
+    x0, x1 = min(xs) - margin, max(xs) + margin
+    y0, y1 = min(ys) - margin, max(ys) + margin
+    keep = []
+    for ring in polylines:
+        rx = [p[0] for p in ring]
+        ry = [p[1] for p in ring]
+        if max(rx) < x0 or min(rx) > x1 or max(ry) < y0 or min(ry) > y1:
+            continue
+        keep.append(ring)
+    return keep
+
+
+# --------------------------------------------------------------------------
 # Geometry helpers
 # --------------------------------------------------------------------------
 def _seg_cross_fraction(p1, p2, p3, p4):
@@ -170,14 +225,19 @@ def _track_points(track_obs, track_for):
 # --------------------------------------------------------------------------
 # Landfall estimation
 # --------------------------------------------------------------------------
-def find_landfall(track_obs, track_for, ports=None, place_radius_km=250.0):
+def find_landfall(track_obs, track_for, ports=None, place_radius_km=250.0,
+                  coast=None):
     """
     Estimate the first forecast landfall: where the last-obs -> forecast
-    polyline first crosses the coastline.
+    polyline first crosses the coast of the map's own land polygons
+    (assets/geo/land.geojson — the exact border shape drawn on the map).
+
+    `coast` may pass an explicit polyline sequence; by default the vector
+    basemap rings are used (coarse COASTLINES fallback if missing).
 
     Returns a dict:
         time      : pandas.Timestamp of the crossing
-        lon, lat  : crossing position
+        lon, lat  : crossing position (on the drawn coast)
         place     : nearest port name (or None if none within place_radius_km)
         place_km  : distance to that port (km)
         time_str  : 'DD/HHZ'
@@ -202,15 +262,20 @@ def find_landfall(track_obs, track_for, ports=None, place_radius_km=250.0):
     if len(pts) < 2:
         return None
 
+    if coast is None:
+        coast = load_coast_rings()
+    coast = _rings_near_track(coast, pts)
+
     crossings = []
     for i in range(len(pts) - 1):
         t0, lon0, lat0 = pts[i]
         t1, lon1, lat1 = pts[i + 1]
         p1, p2 = (lon0, lat0), (lon1, lat1)
 
-        for coast in COASTLINES:
-            for j in range(len(coast) - 1):
-                t_frac = _seg_cross_fraction(p1, p2, coast[j], coast[j + 1])
+        for coast_ring in coast:
+            for j in range(len(coast_ring) - 1):
+                t_frac = _seg_cross_fraction(p1, p2, coast_ring[j],
+                                             coast_ring[j + 1])
                 if t_frac is None:
                     continue
                 cx = p1[0] + t_frac * (p2[0] - p1[0])
@@ -238,8 +303,8 @@ def find_landfall(track_obs, track_for, ports=None, place_radius_km=250.0):
 
     return {
         "time": ct,
-        "lon": round(cx, 2),
-        "lat": round(cy, 2),
+        "lon": round(cx, 3),
+        "lat": round(cy, 3),
         "place": place,
         "place_km": place_km,
         "time_str": format_track_time(ct),
