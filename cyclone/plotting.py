@@ -73,6 +73,18 @@ def wind_cat(w):
 # small safety factor keeps text comfortably inside its cell.
 _TEXT_SAFETY = 1.05
 
+# Translucency of the in-map overlay cards (port / forecast / movement
+# tables and the forecast key strip).  The cards stay exactly where they
+# are, but at this alpha the wind-radii circles and the cone beneath them
+# remain visible as a soft ghost through the card - so no map feature ever
+# looks "swallowed" by a table, at any zoom level, while the opaque dark
+# cell text keeps every table crystal clear.
+_GLASS_ALPHA = 0.80
+# The port table sits over the busy coastline / wind-radii area, so it gets
+# a higher alpha (nearly opaque, like the movement table) to keep its
+# numbers effortlessly readable.
+_PORT_TABLE_ALPHA = 0.93
+
 
 def _text_width_pt(text, fontsize, weight="normal"):
     """
@@ -185,6 +197,8 @@ def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
     for (r, _c), cell in table.get_celld().items():
         cell.set_linewidth(0.7)
         cell.PAD = 0.06
+        _fc = cell.get_facecolor()
+        cell.set_facecolor((_fc[0], _fc[1], _fc[2], _PORT_TABLE_ALPHA))
         if r == 0:
             cell.set_text_props(fontweight='bold')
 
@@ -360,6 +374,8 @@ def _add_fill_table(ax, col_labels, rows, *, x0, x1, y, fontsize=10.0,
     for (r, c), cell in table.get_celld().items():
         cell.set_linewidth(0.7)
         cell.PAD = 0.06
+        _fc = cell.get_facecolor()
+        cell.set_facecolor((_fc[0], _fc[1], _fc[2], _GLASS_ALPHA))
         cell.set_text_props(fontweight='bold')
         #if r == 0 or c == 0:
     return table, bbox
@@ -428,11 +444,19 @@ def _add_key_strip(ax, items, *, x0, x1, y, fontsize=10.0, min_fontsize=6.5,
             (x_cur, y), col_frac, row_h_frac,
             transform=ax.transAxes, clip_on=False,
             facecolor='white', edgecolor='black', linewidth=0.7,
+            alpha=_GLASS_ALPHA,
             zorder=zorder,
         ))
 
         sw_w = KEY_KINDS[kind]
-        sw_x = x_cur + pad_pt * w_frac
+        # Centre the swatch+label group inside its cell: measure the real
+        # ink width of the group and split the leftover cell space evenly,
+        # so every key sits in the middle of its box instead of hugging
+        # the left edge.
+        _content_pt = (sw_w + gap_pt
+                       + _text_width_pt(label, fontsize, weight="bold"))
+        _lead_pt = max(pad_pt * 0.5, (col_pt - _content_pt) / 2.0)
+        sw_x = x_cur + _lead_pt * w_frac
         sw_x2 = sw_x + sw_w * w_frac
 
         if kind == "cone":
@@ -511,50 +535,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     # ---------------- OBSERVED TRACK -----------------
     track_prev_lat = track_data_obs["Latitude"].iloc[0]
     track_prev_lon = track_data_obs["Longitude"].iloc[0]
-
-    # Wind-radius swatches: label -> (edge colour, swatch size).  The three
-    # rows are listed in the same ascending serial as the data columns
-    # (WindR24 -> WindR34 -> WindR64) and carry exactly the map colours:
-    # 24 KT blue, 34 KT red, 64 KT magenta, the widest circle for the
-    # lowest threshold.
-    WIND_RADIUS_SWATCH = {
-        "24 KT Wind": ('blue', 25),
-        "34 KT Wind": ('red', 20),
-        "64 KT Wind": ('magenta', 15),
-    }
-
-    prev_conditions = [
-        ("Invest Area / Low", 'lime', 'full'),
-        ("Tropical Depression", 'steelblue', 'full'),
-        ("Cyclonic Storm", 'aqua', 'full'),
-        ("Category 1", 'lemonchiffon', 'full'),
-        ("Category 2", 'gold', 'full'),
-        ("Category 3", 'tomato', 'full'),
-        ("Category 4", 'fuchsia', 'full'),
-        ("Category 5", 'mediumpurple', 'full'),
-        (" ", '', 'none'),
-        ("24 KT Wind", 'white', 'none'),
-        (" ", ' ', 'none'),
-        ("34 KT Wind", 'white', 'none'),
-        (" ", ' ', 'none'),
-        ("64 KT Wind", 'white', 'none'),
-        (" ", ' ', 'none')
-    ]
-
-    legend_elements_prev = [
-        Line2D(
-            [0], [0],
-            marker='o',
-            color=('w' if condition == " "
-                   else WIND_RADIUS_SWATCH.get(condition, ('black', 8))[0]),
-            markerfacecolor=color,
-            markersize=WIND_RADIUS_SWATCH.get(condition, (None, 8))[1],
-            fillstyle=fillstyle,
-            label=condition,
-            lw=0
-        )
-        for condition, color, fillstyle in prev_conditions
-    ]
 
     for lat, lon, wind in zip(
         track_data_obs["Latitude"],
@@ -736,17 +716,35 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         ax.plot(lon, lat, "o", ms=7, mec='k',
                 color=wind_color(wind), zorder=6)
 
-        # Wind radii
-        for wr, color, zord in [(wr24, 'blue', 1), (wr34, 'red', 2), (wr64, 'magenta', 3)]:
+        # Wind radii.  The soft translucent fills stay at the very bottom of
+        # the artist stack (below the cone and the tracks) while the crisp
+        # ring outlines are drawn *above* the track lines (zorder 5.5, just
+        # under the point markers at 6).  A crossing forecast/observed track
+        # or the grey cone fill can therefore never interrupt or fade a ring:
+        # every circle stays a complete, unbroken ring at any zoom level.
+        # A faint white casing under each coloured ring keeps it legible
+        # where it crosses the cone, the coast or a track line.
+        for wr, color, z_fill in [(wr24, 'blue', 0.6),
+                                  (wr34, 'red', 0.7),
+                                  (wr64, 'magenta', 0.8)]:
             if pd.notna(wr) and float(wr) > 0:
                 r = float(wr)
-                ax.add_patch(plt.Circle((lon, lat), r, color=color, alpha=0.05, zorder=zord))
+                ax.add_patch(plt.Circle((lon, lat), r, color=color,
+                                        alpha=0.05, linewidth=0,
+                                        zorder=z_fill))
                 ax.add_patch(
                     plt.Circle(
                         (lon, lat), r, fill=False,
-                        edgecolor=color, linewidth=1,
-                        alpha=0.3 if color == 'blue' else 0.6 if color == 'red' else 1.0,
-                        zorder=zord
+                        edgecolor='white', linewidth=2.4,
+                        alpha=0.55, zorder=5.4
+                    )
+                )
+                ax.add_patch(
+                    plt.Circle(
+                        (lon, lat), r, fill=False,
+                        edgecolor=color, linewidth=1.15,
+                        alpha=0.55 if color == 'blue' else 0.8 if color == 'red' else 1.0,
+                        zorder=5.5
                     )
                 )
 
@@ -1182,6 +1180,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         table2.auto_set_column_width([0])
         table2[0, 0].set_text_props(fontweight='bold')
         table2.scale(1, 1.8)
+        for _cell in table2.get_celld().values():
+            _fc = _cell.get_facecolor()
+            _cell.set_facecolor((_fc[0], _fc[1], _fc[2], _GLASS_ALPHA))
 
     # ------------- FORECAST TABLE (bottom centre) -------------
     # Sits in the free strip between the port table (left) and the movement
@@ -1257,13 +1258,26 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 row_height_frac=1.9,
             )
 
-  # -------------------- LEGEND --------------------
-  # Drawn after the bottom tables: the forecast key strip decides whether the
-  # cone / forecast-track / landfall entries still belong to this legend.
+  # -------------------- LEGENDS --------------------
+  # Both keys stay exactly where they have always been: the compact
+  # port-risk chip at the top centre of the map and the main intensity
+  # legend in the upper-right corner of the map.  What is dynamic now is
+  # the content and the type size: an entry is offered only when the
+  # matching symbol really appears on this track, and the card measures
+  # itself - taking the largest crystal-clear font that still fits a neat
+  # footprint in its corner, so it never sprawls and never shrinks into
+  # illegibility.  Nothing is moved and nothing is dropped.
     if SHOW_LEGEND:
-        # Keep the port-risk key separate from the long cyclone-status
-        # legend.  This follows the reference layout: a compact, horizontal
-        # key at the top of the map with Low / Mod / High in that order.
+        # Shared card styling: rounded translucent white panel with a soft
+        # slate border, compact type and clear section hierarchy.
+        _frame_kw = dict(
+            frameon=True,
+            fancybox=True,
+            framealpha=0.92,
+            edgecolor='#94a3b8',
+        )
+
+        # ---- port-risk chip, top centre (its original place) ------------
         if SHOW_PORTS:
             port_risk_handles = [
                 Line2D(
@@ -1290,15 +1304,14 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 loc='upper center',
                 bbox_to_anchor=(0.52, 0.995),
                 ncol=3,
-                fontsize=10,
-                frameon=True,
-                fancybox=True,
-                framealpha=0.96,
-                edgecolor='#cbd5e1',
-                borderpad=0.50,
+                fontsize=9.5,
+                borderpad=0.55,
+                borderaxespad=0.30,
                 handletextpad=0.50,
-                columnspacing=1.25,
+                columnspacing=1.30,
+                **_frame_kw,
             )
+            port_risk_legend.get_frame().set_linewidth(1.0)
             for text in port_risk_legend.get_texts():
                 text.set_fontweight('bold')
                 text.set_color('#1f2937')
@@ -1307,82 +1320,151 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
             # A second ax.legend call below would otherwise replace it.
             ax.add_artist(port_risk_legend)
 
-    # Bias-corrected track (dashed magenta)
-        if SHOW_BIAS_TRACK:
-          legend_elements_prev.append(
-            Line2D(
-                [0], [0],
-                linestyle='--',
-                color='magenta',
-                lw=1.5,
-                label='AI-BC Track'
+        def _make_rows(fs):
+            """Build every legend row with marker sizes tied to `fs`, so the
+            swatches always stay in proportion with the text beside them.
+            The row list is fully dynamic: an entry is offered only when the
+            matching symbol actually appears on this track, so the card
+            never advertises categories or radii the map does not show."""
+            rows = []  # (handle, label, is_section_header)
+
+            def _section(title):
+                # A quiet spacer line separates the sections from each other,
+                # but the very first header starts flush at the top of the
+                # card - no dead space above it.
+                rows.append((Line2D([], [], linestyle='none'),
+                             ('\n' if rows else '') + title, True))
+
+            # intensity categories really present on obs + forecast track
+            _on_track = {wind_color(w) for w in
+                         list(track_data_obs["Intensity"]) +
+                         list(track_data_for["Intensity"])}
+            _int_rows = []
+            for _label, _face in [
+                ('Invest Area / Low',   'lime'),
+                ('Tropical Depression', 'steelblue'),
+                ('Cyclonic Storm',      'aqua'),
+                ('Category 1',          'lemonchiffon'),
+                ('Category 2',          'gold'),
+                ('Category 3',          'tomato'),
+                ('Category 4',          'fuchsia'),
+                ('Category 5',          'mediumpurple'),
+            ]:
+                if _face not in _on_track:
+                    continue
+                _int_rows.append((
+                    Line2D([0], [0], marker='o', linestyle='none',
+                           markerfacecolor=_face, markeredgecolor='black',
+                           markeredgewidth=0.7, markersize=0.80 * fs),
+                    _label, False,
+                ))
+            if _int_rows:
+                _section('STORM INTENSITY')
+                rows.extend(_int_rows)
+
+            if SHOW_AI_POSITION:
+                rows.append((
+                    Line2D([0], [0], marker='*', linestyle='none',
+                           markerfacecolor='yellow', markeredgecolor='black',
+                           markeredgewidth=0.6, markersize=1.20 * fs),
+                    'AI Position', False,
+                ))
+
+            # wind-radii thresholds really present in the forecast columns
+            _wr_rows = []
+            for _label, _edge, _col in [
+                ('24 KT Wind', 'blue',    track_data_for["WindR24"]),
+                ('34 KT Wind', 'red',     track_data_for["WindR34"]),
+                ('64 KT Wind', 'magenta', track_data_for["WindR64"]),
+            ]:
+                if not any(pd.notna(v) and float(v) > 0 for v in _col):
+                    continue
+                _wr_rows.append((
+                    Line2D([0], [0], marker='o', linestyle='none',
+                           markerfacecolor='white', markeredgecolor=_edge,
+                           markeredgewidth=0.16 * fs, markersize=1.00 * fs),
+                    _label, False,
+                ))
+            if _wr_rows:
+                _section('WIND RADII')
+                rows.extend(_wr_rows)
+
+            # Bias-corrected / forecast track, cone and landfall estimate.
+            # When the key strip above the forecast table is on, it carries
+            # the cone / forecast-track / landfall entries instead, so they
+            # are not listed twice on the same chart.
+            track_rows = []
+            if SHOW_BIAS_TRACK and fc_track_lon is not None:
+                track_rows.append((
+                    Line2D([0], [0], linestyle='--', color='magenta',
+                           lw=1.6, alpha=0.8),
+                    'AI-BC Track', False,
+                ))
+            if key_strip_bbox is None and fc_track_lon is not None:
+                track_rows.append((
+                    Line2D([0], [0], linestyle='-', color='magenta', lw=2.0),
+                    'Forecast Track', False,
+                ))
+            if key_strip_bbox is None and SHOW_CONE and n_forecast >= 1:
+                track_rows.append((
+                    Patch(facecolor='lightgray', edgecolor='gray',
+                          alpha=0.6, linewidth=1.0),
+                    'Uncertainty Cone', False,
+                ))
+            if key_strip_bbox is None and SHOW_LANDFALL and landfall_info is not None:
+                track_rows.append((
+                    Line2D([0], [0], marker='X', linestyle='none',
+                           markerfacecolor='red', markeredgecolor='black',
+                           markeredgewidth=0.7, markersize=0.95 * fs),
+                    'Landfall Est.', False,
+                ))
+            if track_rows:
+                _section('TRACK & AREAS')
+                rows.extend(track_rows)
+            return rows
+
+        # ---- main legend, upper-right corner (its original place) --------
+        # Dynamic type size: the largest crystal-clear size whose card still
+        # fits a neat footprint (<=45% of the map height, <=32% of its width)
+        # in that corner - so the card stays compact without ever becoming
+        # hard to read.
+        legend = None
+        for fs in (10.5, 10.0, 9.5, 9.0, 8.6):
+            rows = _make_rows(fs)
+            if legend is not None:
+                legend.remove()
+            legend = ax.legend(
+                handles=[h for h, _lbl, _hdr in rows],
+                labels=[lbl for _h, lbl, _hdr in rows],
+                loc='upper right',
+                fontsize=fs,
+                handlelength=1.7,
+                handletextpad=0.60,
+                labelspacing=0.45,
+                borderpad=0.80,
+                **_frame_kw,
             )
-        )
-            
-        # Forecast track (solid magenta).  When the key strip above the
-        # forecast table is on, it carries these three entries instead, so
-        # they are not listed twice on the same map.
-        if key_strip_bbox is None:
-            legend_elements_prev.append(
-                Line2D(
-                    [0], [0],
-                    linestyle='-',
-                    color='magenta',
-                    lw=2.0,
-                    label='Forecast Track'
-                )
-            )
+            legend.get_frame().set_linewidth(1.1)
+            legend.get_frame().set_boxstyle('round,pad=0.35,rounding_size=0.15')
 
-        # Cone (if shown)
-        if key_strip_bbox is None and SHOW_CONE and n_forecast >= 1:
-            legend_elements_prev.append(
-                Patch(
-                    facecolor='lightgray',
-                    edgecolor='gray',
-                    alpha=0.3,
-                    label='Uncertainty Cone'
-                )
-            )
+            for text, (_h, _lbl, is_header) in zip(legend.get_texts(), rows):
+                if is_header:
+                    text.set_fontweight('bold')
+                    text.set_fontsize(fs * 0.86)
+                    text.set_color('#475569')
+                else:
+                    text.set_color('#1f2937')
 
-   # Insert AI Position right after Category 5
-        if SHOW_AI_POSITION:
-            legend_elements_prev.insert(
-                8,
-                Line2D(
-                    [0], [0],
-                    marker='*',
-                    color='k',
-                    markerfacecolor='yellow',
-                    markersize=12,
-                    lw=0,
-                    label='AI Position'
-                )
-            )
+            legend.set_zorder(9999)
+            legend.get_frame().set_zorder(9999)
 
-        if key_strip_bbox is None and SHOW_LANDFALL and landfall_info is not None:
-            legend_elements_prev.append(
-                Line2D(
-                    [0], [0],
-                    marker='X',
-                    color='k',
-                    markerfacecolor='red',
-                    markersize=9,
-                    lw=0,
-                    label='Landfall Est.'
-                )
-            )
-
-        legend = ax.legend(
-            handles=legend_elements_prev,
-            loc='upper right',
-            title='INTENSITY SCALE'
-        )
-        legend.get_title().set_fontweight('bold')
-
-  # Make sure legend is above all plotted data
-        legend.set_zorder(9999)
-        legend.get_frame().set_zorder(9999)
-
+            fig.canvas.draw()
+            _ren = fig.canvas.get_renderer()
+            _lb = legend.get_window_extent(_ren)
+            _ab = ax.get_window_extent(_ren)
+            if (_lb.height <= 0.45 * _ab.height
+                    and _lb.width <= 0.32 * _ab.width):
+                break
 
     # -------------------- ACE BOX --------------------
     if SHOW_ACE_BOX:
