@@ -1,13 +1,13 @@
 # Data files
 
-Put your cyclone track files (`.txt`) here. Sub-folders are allowed and are a
-nice way to organise by year (e.g. `data/2025/ditwah.txt`) — the file picker
-shows all of them, newest first.
+Put your cyclone track files (`.txt`) here. Sub-folders are allowed and a
+nice way to organise by year (e.g. `data/2025/ditwah.txt`) — the file
+picker shows all of them, newest first.
 
-## File format
+## Reference format
 
 ```
-Cyclone Name: DITWAH              <- or:  Invest Name: 06B
+Cyclone Name: DITWAH              <- or:  Invest Name: 06B   (optional)
 Synoptic Time, Latitude, Longitude, Intensity, Pressure
 2025-11-25 00:00, 05.20, 78.90, 15, 1009
 ...one row per 6-h observation...
@@ -25,10 +25,25 @@ Synoptic Time, Latitude, Longitude, Intensity, WindR24, WindR34, WindR64
 | Pressure   | hPa (observed section only)            |
 | WindR24 / WindR34 / WindR64 | wind-radius in degrees of radius for the 24/34/64-kt isotachs (forecast only, `00` = none) |
 
+## The loader is forgiving — you can write less
+
+- **Name header optional**: without it the file name becomes the storm
+  name, and a name like `06B` / `92B` is treated as an invest
+  automatically. `Name:`, `Storm:`, `Tropical Cyclone:` also work.
+- **Column headers optional**: without one, the canonical column order
+  above is assumed. With one, any order/case works, including synonyms:
+  `date`/`time`, `lat`, `lon`/`lng`, `wind`/`kt`/`vmax`, `mslp`/`hpa`,
+  `r24`/`r34`/`r64`, …
+- **Any separator**: comma, semicolon, tab, pipe or plain spaces.
+- **Comments & blanks**: lines starting with `#` or `;` and empty lines
+  are skipped.
+- **Missing values**: `00`, `0`, `-`, `--` or empty are all accepted.
+- **Divider**: `=== FORECAST ===`, `--- forecast ---`, `FORECAST`, …
+  (case-insensitive).
+
 Notes:
 
-- The first line decides the title: `Cyclone Name: X` or `Invest Name: X`.
-- The observed section must come first; `=== FORECAST ===` starts the forecast section.
+- The observed section must come first; the divider starts the forecast.
 - At least 2 forecast points are needed for the uncertainty cone.
-- Keep the reference CSVs (`climo.csv`, `climo_bias.csv`) that live in `assets/` —
-  the AI features read them from there.
+- Keep the reference CSVs (`climo.csv`, `climo_bias.csv`) that live in
+  `assets/` — the AI features read them from there.
