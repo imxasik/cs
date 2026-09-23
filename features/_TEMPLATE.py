@@ -14,7 +14,7 @@ The context dict contains:
     is_invest    : bool
     landfall     : dict | None  (landfall estimate returned by the plotter)
     approaches   : list  (port-approach rows returned by the plotter)
-    map_file     : str  -> assets/Map.png
+    map_file     : str  -> assets/geo/land.geojson (vector coast)
     output_image : str  -> the PNG that was just generated
     plots_dir    : str  -> output/plots  (save any extra images here)
     outputs_dir  : str  -> output/

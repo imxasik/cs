@@ -10,7 +10,7 @@ The context dict contains:
     - track_obs
     - track_for
     - is_invest
-    - map_file
+    - map_file      (str: assets/geo/land.geojson vector coastline)
     - output_image
     - plots_dir   (str: output/plots — save any extra images here)
     - outputs_dir (str: output/)

@@ -27,7 +27,6 @@ BOOL_DEFAULTS = {
     "show_cone": True,
     "show_legend": True,
     "show_ports": True,
-    "show_port_table": True,   # legacy alias of show_approach_table (merged table)
     "show_movement_table": True,
     "show_ace_box": True,
     "show_max_wind_boxes": True,
@@ -41,11 +40,14 @@ BOOL_DEFAULTS = {
     "show_forecast_key": True,    # map key strip above the forecast table
     "full_track_extent": False,   # zoom out so the whole observed track shows
     "wind_radius_extent": True,   # size the map window from the wind-radius rings
+    "show_grid": True,            # map graticule (lat/lon grid lines)
+    "show_scale_bar": True,       # kilometre scale bar inside the map
 }
 
 # Default strings under [style]
 STYLE_DEFAULTS = {
-    "theme": "xp",                       # reserved for future themes
+    "theme": "official",                # design tokens: cyclone/theme.py
+    "brand_name": "XP WEATHER",         # header brand chip (left corner)
     "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
     "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
     "forecast_time_label": "TIME (BST)",   # first cell of the forecast table
@@ -122,7 +124,6 @@ OUTPUT_DPI = int(_FLOATS["output_dpi"])
 SHOW_CONE = _BOOLS["show_cone"]
 SHOW_LEGEND = _BOOLS["show_legend"]
 SHOW_PORTS = _BOOLS["show_ports"]
-SHOW_PORT_TABLE = _BOOLS["show_port_table"]
 SHOW_MOVEMENT_TABLE = _BOOLS["show_movement_table"]
 SHOW_ACE_BOX = _BOOLS["show_ace_box"]
 SHOW_MAX_WIND_BOXES = _BOOLS["show_max_wind_boxes"]
@@ -146,8 +147,11 @@ FORECAST_TABLE_MIN_FONTSIZE = _FLOATS["forecast_table_min_fontsize"]
 
 WIND_RADIUS_EXTENT = _BOOLS["wind_radius_extent"]
 WIND_RADIUS_PAD = _FLOATS["wind_radius_pad"]
+SHOW_GRID = _BOOLS["show_grid"]
+SHOW_SCALE_BAR = _BOOLS["show_scale_bar"]
 
 THEME = _STYLE["theme"]
+BRAND_NAME = _STYLE["brand_name"]
 DATE_FORMAT = _STYLE["date_format"]
 FOOTER_TEXT = _STYLE["footer_text"]
 FORECAST_TIME_LABEL = _STYLE["forecast_time_label"]
