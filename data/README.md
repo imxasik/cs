@@ -4,46 +4,47 @@ Put your cyclone track files (`.txt`) here. Sub-folders are allowed and a
 nice way to organise by year (e.g. `data/2025/ditwah.txt`) — the file
 picker shows all of them, newest first.
 
-## Reference format
+## Format v2 (recommended — the least typing)
 
 ```
-Cyclone Name: DITWAH              <- or:  Invest Name: 06B   (optional)
-Synoptic Time, Latitude, Longitude, Intensity, Pressure
-2025-11-25 00:00, 05.20, 78.90, 15, 1009
-...one row per 6-h observation...
-=== FORECAST ===
-Synoptic Time, Latitude, Longitude, Intensity, WindR24, WindR34, WindR64
-2025-12-03 06:00, 11.9, 79.2, 20, 00, 00, 00
-...one row per 6-h forecast...
+# optional comment lines start with #
+NAME 06B                 <- optional; file name is used otherwise
+KIND INVEST              <- optional; INVEST or CYCLONE (auto-guessed)
+
+OBS
+2026-09-19 00:00   13.00   95.00   10   1007
+...
+
+FORECAST
+2026-09-22 12:00   17.50   85.50   30   1.3    -      -
+...
 ```
 
-| Field      | Unit / format                         |
-|------------|----------------------------------------|
-| Synoptic Time | `YYYY-MM-DD HH:MM` (UTC)            |
-| Latitude / Longitude | decimal degrees (N/E positive) |
-| Intensity  | 1-minute sustained wind, **knots**     |
-| Pressure   | hPa (observed section only)            |
-| WindR24 / WindR34 / WindR64 | wind-radius in degrees of radius for the 24/34/64-kt isotachs (forecast only, `00` = none) |
+Fixed column order, separated by spaces (or commas/tabs):
 
-## The loader is forgiving — you can write less
+| Section    | Columns                                              |
+|------------|------------------------------------------------------|
+| `OBS`      | time (UTC `YYYY-MM-DD HH:MM`), lat, lon, wind (kt), pressure (hPa) |
+| `FORECAST` | time (UTC), lat, lon, wind (kt), r24, r34, r64 (degrees of radius) |
 
-- **Name header optional**: without it the file name becomes the storm
-  name, and a name like `06B` / `92B` is treated as an invest
-  automatically. `Name:`, `Storm:`, `Tropical Cyclone:` also work.
-- **Column headers optional**: without one, the canonical column order
-  above is assumed. With one, any order/case works, including synonyms:
-  `date`/`time`, `lat`, `lon`/`lng`, `wind`/`kt`/`vmax`, `mslp`/`hpa`,
-  `r24`/`r34`/`r64`, …
-- **Any separator**: comma, semicolon, tab, pipe or plain spaces.
-- **Comments & blanks**: lines starting with `#` or `;` and empty lines
-  are skipped.
-- **Missing values**: `00`, `0`, `-`, `--` or empty are all accepted.
-- **Divider**: `=== FORECAST ===`, `--- forecast ---`, `FORECAST`, …
-  (case-insensitive).
+Rules: one fix per line · `-` (or `00`, `--`, empty) means "none" ·
+`#` comments and blank lines are skipped · pressure / radii columns may be
+left out entirely · `NAME`/`KIND` may be omitted (a file named `06B.txt`
+becomes invest 06B automatically).
 
-Notes:
+## Legacy format (still accepted)
 
-- The observed section must come first; the divider starts the forecast.
-- At least 2 forecast points are needed for the uncertainty cone.
-- Keep the reference CSVs (`climo.csv`, `climo_bias.csv`) that live in
-  `assets/` — the AI features read them from there.
+Older files keep working untouched: a `Cyclone Name:` / `Invest Name:`
+header, `Synoptic Time, Latitude, ...` column headers in any order/case,
+and a `=== FORECAST ===` divider. The loader also accepts any separator,
+synonym column names and missing-value tokens — but for new files, v2 is
+the clean way.
+
+## Notes
+
+- The observed section must come first; at least 2 forecast points are
+  needed for the uncertainty cone.
+- Keep the reference CSVs (`climo.csv`, `climo_bias.csv`) in `assets/` —
+  the AI features read them from there.
+- The coastline is vector data in `assets/geo/land.geojson` (GSHHS,
+  public domain); rebuild with `scripts/make_coastline.py` if ever needed.

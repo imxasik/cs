@@ -146,10 +146,10 @@ def process(cyclone_name, track_obs, track_for, is_invest,
             out_root: Path, run_features: bool = True,
             output_name: str = None) -> Path:
     """Generate the plot + run feature plugins. Returns the PNG path."""
-    map_file = THIS_DIR / "assets" / "Map.png"
+    map_file = THIS_DIR / "assets" / "geo" / "land.geojson"
     if not map_file.exists():
-        print(f"{YELLOW}WARNING: Map image not found at {map_file}. "
-              f"Plot will use a blank background.{RESET}")
+        print(f"{YELLOW}WARNING: coastline file not found at {map_file}. "
+              f"Plot will use a plain sea background.{RESET}")
 
     plots_dir = out_root / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -170,7 +170,7 @@ def process(cyclone_name, track_obs, track_for, is_invest,
         track_data_obs=track_obs,
         track_data_for=track_for,
         is_invest=is_invest,
-        map_image_path=str(map_file),
+        map_asset_path=str(map_file),
         output_path=str(output_path),
     ) or {}
     print(f"{GREEN}✓ Plot saved to:{RESET} {BOLD}{output_path}{RESET}")

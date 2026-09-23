@@ -30,7 +30,6 @@ height it needs.  Colours and metrics come from cyclone/theme.py.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +38,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, PathPatch, Polygon, Rectangle
 from matplotlib.path import Path as MplPath
 
+from . import basemap
 from . import config as cfg
 from .theme import (
     get_theme, INTENSITY_SCALE, WIND_RADII, PORT_RISK,
@@ -277,12 +277,6 @@ def forecast_table_steps(track_obs, track_for, mode="wind", tz_offset_hours=6.0)
         steps.append((when + tz, speed))
         prev = (lat, lon, when)
     return steps
-
-
-def forecast_step_speeds(track_obs, track_for, tz_offset_hours=6.0):
-    """Translation speed (km/h) per forecast step."""
-    return forecast_table_steps(track_obs, track_for, mode="motion",
-                                tz_offset_hours=tz_offset_hours)
 
 
 def thin_steps(steps, max_cols):
@@ -737,14 +731,11 @@ def _nice_step(span, target=7):
     return 20
 
 
-def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, bg,
+def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
               track_obs, track_for, cone_pts, smooth, fc_track, bias_track,
               landfall_info, visible_ports, ml_point, show_grid):
-    ax.set_facecolor(T["sea"])
-    if bg is not None:
-        ax.imshow(bg, extent=[cfg.MIN_LON, cfg.MAX_LON,
-                              cfg.MIN_LAT, cfg.MAX_LAT],
-                  zorder=0, interpolation="bilinear", clip_on=True)
+    basemap.draw_land(ax, T, (lon_min, lon_max, lat_min, lat_max),
+                      basemap_path)
     ax.set_xlim(lon_min, lon_max)
     ax.set_ylim(lat_min, lat_max)
     ax.set_aspect("equal", adjustable="datalim")
@@ -943,12 +934,10 @@ def _north_arrow(ax, T):
 # Main entry point
 # ---------------------------------------------------------------------------
 def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
-                 map_image_path, output_path):
+                 map_asset_path, output_path):
     global OUTPUT_DPI, SHOW_AI_POSITION, SHOW_BIAS_TRACK, FULL_TRACK_EXTENT
     T = get_theme(cfg.THEME)
     pt2px = OUTPUT_DPI / 72.0
-
-    bg = plt.imread(map_image_path) if os.path.exists(map_image_path) else None
 
     obs, fc = track_data_obs, track_data_for
     has_obs = obs is not None and len(obs) > 0
@@ -959,8 +948,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     # ---------------- analytics (landfall, ports, motion) ------------------
     landfall_info, approach_rows = None, []
-    if cfg.SHOW_LANDFALL or cfg.SHOW_PORTS or cfg.SHOW_APPROACH_TABLE \
-            or cfg.SHOW_PORT_TABLE:
+    if cfg.SHOW_LANDFALL or cfg.SHOW_PORTS or cfg.SHOW_APPROACH_TABLE:
         try:
             landfall_info = find_landfall(obs, fc, BOB())
             if cfg.SHOW_LANDFALL:
@@ -975,7 +963,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 else:
                     print("[LANDFALL] No landfall detected within the "
                           f"forecast period.")
-            if cfg.SHOW_APPROACH_TABLE or cfg.SHOW_PORT_TABLE:
+            if cfg.SHOW_APPROACH_TABLE:
                 approach_rows = port_centre_table(
                     obs, fc, BOB(), landfall=landfall_info,
                     radius_km=cfg.APPROACH_RADIUS, top=cfg.APPROACH_PORTS)
@@ -1165,7 +1153,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                       T["landfall"]))
 
     port_rows, port_dots = [], []
-    if (cfg.SHOW_APPROACH_TABLE or cfg.SHOW_PORT_TABLE) and approach_rows:
+    if cfg.SHOW_APPROACH_TABLE and approach_rows:
         for r in approach_rows:
             port_rows.append([r["name"], f"{r['dist_km']} km", r["dir_str"]])
             if landfall_info is not None:
@@ -1334,7 +1322,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 visible_ports.append((name, plat, plon, band))
 
     _draw_map(ax_map, T, lon_min=lon_min, lon_max=lon_max, lat_min=lat_min,
-              lat_max=lat_max, bg=bg, track_obs=obs if has_obs else None,
+              lat_max=lat_max, basemap_path=map_asset_path,
+              track_obs=obs if has_obs else None,
               track_for=fc if has_for else None, cone_pts=cone_pts,
               smooth=smooth, fc_track=fc_track, bias_track=bias_track,
               landfall_info=(landfall_info if cfg.SHOW_LANDFALL else None),

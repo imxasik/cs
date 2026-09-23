@@ -190,25 +190,75 @@ def _parse_rows(lines, is_forecast):
     return df.reset_index(drop=True)
 
 
+_V2_KEYWORDS = {"NAME", "KIND", "OBS", "FORECAST"}
+
+
+def _try_v2(lines):
+    """
+    Parse the clean v2 layout; return None when the file is not v2.
+
+        NAME 06B                 <- optional (file name otherwise)
+        KIND INVEST              <- optional (invest | cyclone)
+        OBS
+        2026-09-19 00:00  13.00  95.00  10  1007
+        FORECAST
+        2026-09-22 12:00  17.50  85.50  30  1.3  -  -
+
+    Fixed column order, whitespace separated, '-' for "none", # comments.
+    """
+    if not any(l.split()[0].upper() in _V2_KEYWORDS
+               for l in lines if l.split()):
+        return None
+    name = kind = None
+    section = "obs"
+    obs_lines, for_lines = [], []
+    for line in lines:
+        parts = line.split()
+        key = parts[0].upper()
+        if key == "NAME":
+            name = line.split(None, 1)[1].strip()
+        elif key == "KIND":
+            kind = parts[1].lower()
+        elif key == "OBS":
+            section = "obs"
+        elif key == "FORECAST":
+            section = "for"
+        else:
+            (for_lines if section == "for" else obs_lines).append(line)
+    return name, kind, obs_lines, for_lines
+
+
 def process_combined_cyclone_data(file_path):
     """
-    Read a combined observed/forecast file.
+    Read a combined observed/forecast file (v2 or legacy layout).
 
     Returns (cyclone_name, track_obs, track_for, is_invest) with the
     canonical columns documented at the top of this module.
     """
     path = Path(file_path)
-    raw = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    raw = [ln.strip() for ln in
+           path.read_text(encoding="utf-8", errors="replace").splitlines()]
+    raw = [ln for ln in raw if ln and not _COMMENT_RE.match(ln)]
+
+    v2 = _try_v2(raw)
+    if v2 is not None:
+        name, kind, obs_lines, for_lines = v2
+        if name is None:
+            name = path.stem
+        if kind is not None:
+            is_invest = kind.startswith("invest")
+        else:
+            is_invest = bool(re.match(r"^\d{2}B$", name, re.IGNORECASE))
+        track_obs = _parse_rows(obs_lines, is_forecast=False)
+        track_for = _parse_rows(for_lines, is_forecast=True)
+        return _finalise(name, track_obs, track_for, is_invest)
 
     name, is_invest = None, False
     obs_lines, for_lines = [], []
     reading_forecast = False
     first_meaningful = True
 
-    for line in raw:
-        stripped = line.strip()
-        if not stripped or _COMMENT_RE.match(stripped):
-            continue
+    for stripped in raw:
         if _DIVIDER_RE.match(stripped):
             reading_forecast = True
             continue
@@ -230,10 +280,12 @@ def process_combined_cyclone_data(file_path):
 
     track_obs = _parse_rows(obs_lines, is_forecast=False)
     track_for = _parse_rows(for_lines, is_forecast=True)
+    return _finalise(name, track_obs, track_for, is_invest)
 
+
+def _finalise(name, track_obs, track_for, is_invest):
     if track_obs.empty and not track_for.empty:
         # forecast-only file: promote the first forecast fix to "current"
         track_obs = track_for.head(1).copy()
         track_for = track_for.iloc[1:].reset_index(drop=True)
-
     return name, track_obs, track_for, is_invest

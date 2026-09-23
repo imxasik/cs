@@ -37,8 +37,11 @@ Why it stays clean, whatever the data:
   no landfall → an "Unknown · no landfall" risk row; 12 forecast steps →
   the table thins itself to `forecast_table_max_cols` columns; …).
 * **The map window is solved from what is drawn** — every wind-radius ring
-  and the cone fit fully inside the frame, clipped to the background map,
-  so nothing is cut off and no empty ocean is wasted.
+  and the cone fit fully inside the frame, clipped to the basemap
+  coverage, so nothing is cut off and no empty ocean is wasted.
+* **The coast is vector, not a raster image** — GSHHS high-res shoreline
+  drawn as theme-coloured land with a soft shallow-water halo, razor-sharp
+  at every zoom and DPI.
 * **Labels are collision-solved** — every chip (forecast points, NOW,
   landfall, ports, AI) is placed in the first free slot around its marker;
   if no slot is free the *label* is dropped, never drawn on top of
@@ -59,12 +62,15 @@ Why it stays clean, whatever the data:
   - `theme.py` – **design tokens**: every colour/line/type size of the
     graphic in one place; `[style] theme` picks a theme.
   - `plotting.py` – the layout engine described above.
+  - `basemap.py` – vector coastline renderer (crisp land at any DPI).
   - `cone.py`, `geo.py`, `ace.py`, `landfall.py`, `ports.py` – math & data.
   - `feature_manager.py` – auto-runs plugins from `features/`.
 - `features/` – pluggable add-ons (`_TEMPLATE.py` to copy); `ailoc.py`
   (k-NN landfall "AI Position"), `aibc.py` (climatology bias track).
-- `assets/` – background map + AI reference CSVs. `data/` – your track
-  files. `output/plots/` – generated PNGs.
+- `assets/geo/land.geojson` – GSHHS high-res coastline (public domain,
+  simplified & clipped to the region; rebuild via
+  `scripts/make_coastline.py`). `assets/*.csv` – AI reference data.
+- `data/` – your track files. `output/plots/` – generated PNGs.
 
 ## Quick start
 
@@ -74,30 +80,22 @@ Why it stays clean, whatever the data:
 python main.py data/06B.txt --show-ai --dpi 200 -n my_name
 ```
 
-## Data files — write as little as possible
-
-Reference format (`data/README.md` has the full table):
+## Data files — format v2, the least typing possible
 
 ```
-Cyclone Name: DITWAH            <- or "Invest Name: 06B" (optional!)
-Synoptic Time, Latitude, Longitude, Intensity, Pressure
-2025-11-25 00:00, 05.20, 78.90, 15, 1009
-=== FORECAST ===
-Synoptic Time, Latitude, Longitude, Intensity, WindR24, WindR34, WindR64
-2025-12-03 06:00, 11.9, 79.2, 20, 00, 00, 00
+NAME 06B                 <- optional; the file name works too
+KIND INVEST              <- optional; auto-guessed otherwise
+
+OBS
+2026-09-19 00:00   13.00   95.00   10   1007
+FORECAST
+2026-09-22 12:00   17.50   85.50   30   1.3    -      -
 ```
 
-The loader is deliberately forgiving, so hand-written or exported files
-usually work **unmodified**:
-
-- name header optional — otherwise the file name is used, and names like
-  `06B`/`92B` are recognised as invests automatically;
-- column headers optional, any order/case, with synonyms (`date`/`time`,
-  `lat`, `lon`/`lng`, `wind`/`kt`, `mslp`, `r34`, …);
-- separators: comma, semicolon, tab, pipe or plain spaces;
-- blank lines and `#` / `;` comments are skipped;
-- missing values may be `00`, `0`, `-`, `--` or empty;
-- the divider may be `=== FORECAST ===`, `--- forecast ---`, `FORECAST`, …
+Fixed column order (`time lat lon wind [pressure | r24 r34 r64]`), spaces
+or commas, `-` for "none", `#` comments allowed — see `data/README.md`.
+Older legacy files (name header + column headers + `=== FORECAST ===`)
+still load unmodified, in any separator/case/synonym style.
 
 ## Config (config.ini)
 
@@ -107,7 +105,7 @@ usually work **unmodified**:
 `wind_radius_pad`, and the map coverage `min_lat/max_lat/min_lon/max_lon`.
 
 Toggles (1/0): `show_cone`, `show_legend` (MAP KEY card), `show_ports`,
-`show_port_table`/`show_approach_table` (NEAREST PORTS card),
+`show_approach_table` (NEAREST PORTS card),
 `show_movement_table` + `show_max_wind_boxes` + `show_ace_box` (AT A
 GLANCE stats), `show_forecast_table` (bottom band table),
 `show_forecast_key` (key strip above it), `show_landfall`, `show_footer`,

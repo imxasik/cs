@@ -27,7 +27,6 @@ BOOL_DEFAULTS = {
     "show_cone": True,
     "show_legend": True,
     "show_ports": True,
-    "show_port_table": True,   # legacy alias of show_approach_table (merged table)
     "show_movement_table": True,
     "show_ace_box": True,
     "show_max_wind_boxes": True,
@@ -125,7 +124,6 @@ OUTPUT_DPI = int(_FLOATS["output_dpi"])
 SHOW_CONE = _BOOLS["show_cone"]
 SHOW_LEGEND = _BOOLS["show_legend"]
 SHOW_PORTS = _BOOLS["show_ports"]
-SHOW_PORT_TABLE = _BOOLS["show_port_table"]
 SHOW_MOVEMENT_TABLE = _BOOLS["show_movement_table"]
 SHOW_ACE_BOX = _BOOLS["show_ace_box"]
 SHOW_MAX_WIND_BOXES = _BOOLS["show_max_wind_boxes"]

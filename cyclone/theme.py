@@ -71,11 +71,16 @@ OFFICIAL = {
     "grid":        "#8aa0b8",   # map graticule
     "map_edge":    "#b9c6d4",   # map frame
 
+    # ---- basemap (vector land) ---------------------------------------------
+    "sea":         "#d3e5f2",   # ocean
+    "land":        "#eceadb",   # land fill (warm paper tone)
+    "coast":       "#87a0b4",   # coastline stroke
+    "coast_halo":  "#b7d3e6",   # shallow-water glow around the coast
+
     # ---- map graphics -----------------------------------------------------
     "obs_track":   "#33475c",   # observed track line
     "cone_fill":   "#64748b",
     "cone_edge":   "#475569",
-    "sea":         "#dce9f5",   # fallback sea tint when Map.png is missing
     "landfall":    "#dc2626",
     "ai":          "#f59e0b",
     "bias":        "#7c3aed",
