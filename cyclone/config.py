@@ -18,6 +18,8 @@ FLOAT_DEFAULTS = {
     "forecast_tz_offset": 6.0,        # hours added to the UTC synoptic times (6 = BST)
     "forecast_table_max_cols": 8.0,   # thin the steps out if there are more than this
     "forecast_table_min_fontsize": 6.8,
+    # Wind-radius driven map window: margin beyond the outermost ring
+    "wind_radius_pad": 0.2,
 }
 
 # Default boolean toggles
@@ -38,6 +40,7 @@ BOOL_DEFAULTS = {
     "show_forecast_table": True,  # bottom-centre Time / Speed forecast table
     "show_forecast_key": True,    # map key strip above the forecast table
     "full_track_extent": False,   # zoom out so the whole observed track shows
+    "wind_radius_extent": True,   # size the map window from the wind-radius rings
 }
 
 # Default strings under [style]
@@ -140,6 +143,9 @@ APPROACH_PORTS = int(_FLOATS["approach_ports"])
 FORECAST_TZ_OFFSET = _FLOATS["forecast_tz_offset"]
 FORECAST_TABLE_MAX_COLS = int(_FLOATS["forecast_table_max_cols"])
 FORECAST_TABLE_MIN_FONTSIZE = _FLOATS["forecast_table_min_fontsize"]
+
+WIND_RADIUS_EXTENT = _BOOLS["wind_radius_extent"]
+WIND_RADIUS_PAD = _FLOATS["wind_radius_pad"]
 
 THEME = _STYLE["theme"]
 DATE_FORMAT = _STYLE["date_format"]
