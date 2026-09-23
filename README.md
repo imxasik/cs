@@ -29,15 +29,13 @@ It is designed so that:
   - `feature_manager.py` – automatically loads feature modules from `features/`.
 - `features/` – pluggable feature modules:
   - `_TEMPLATE.py` – copy-and-rename starter for your own feature.
-  - `summary.py` – generates a PDF summary report per cyclone.
   - `ailoc.py` – k-NN landfall location prediction ("AI Position" star).
   - `aibc.py` – climatology-guided bias correction ("AI-BC Track").
-  - `ai.py` – simple static bias fallback.
 - `assets/` – background map (`Map.png`) and AI training CSVs
   (`climo.csv`, `climo_bias.csv`).
 - `data/` – put all your cyclone data text files here (sub-folders OK,
   e.g. `data/2025/ditwah.txt`). See `data/README.md` for the file format.
-- `output/` – generated results: `output/plots/` (PNG) and `output/files/` (PDF).
+- `output/` – generated results: `output/plots/` (PNG images only).
 
 ## Quick start
 
@@ -64,11 +62,11 @@ keeps the `config.ini` value.
 
 ```
 python main.py data/2025/montha.txt --buffer 2.5 --ucr 0.25
-python main.py data/95B.txt --show-ai          # force AI overlays on
-python main.py data/95B.txt --no-features      # skip the plugins
-python main.py data/95B.txt --dpi 200 -o /tmp  # custom DPI / output folder
-python main.py data/95B.txt -n 95B_ForecastTable   # custom PNG name
-python main.py data/95B.txt --full-track   # keep the whole observed
+python main.py data/06B.txt --show-ai          # force AI overlays on
+python main.py data/06B.txt --no-features      # skip the plugins
+python main.py data/06B.txt --dpi 200 -o /tmp  # custom DPI / output folder
+python main.py data/06B.txt -n 06B_ForecastTable   # custom PNG name
+python main.py data/06B.txt --full-track   # keep the whole observed
                                            # track in frame as well
 python main.py --list                          # list data files and exit
 ```
@@ -194,12 +192,12 @@ Under `[style]`:
   in the Speed row; `motion` puts the storm's translation speed there.
 - `output_name` – name of the output PNG, **without** `.png`. Empty (the
   default) keeps the usual `<Name>_Track`. `{name}` is replaced by the
-  cyclone/invest name, so `output_name = {name}_Track_v2` saves 95B as
-  `95B_Track_v2.png`. The `-n/--name` command-line flag overrides it for a
+  cyclone/invest name, so `output_name = {name}_Track_v2` saves 06B as
+  `06B_Track_v2.png`. The `-n/--name` command-line flag overrides it for a
   single run:
 
   ```bash
-  python main.py data/95B.txt -n 95B_ForecastTable
+  python main.py data/06B.txt -n 06B_ForecastTable
   ```
 
 ## Pluggable features (features/ folder)
@@ -217,8 +215,8 @@ To add a new feature (for example `landfall.py`):
        cyclone_name = context["cyclone_name"]
        track_obs = context["track_obs"]
        track_for = context["track_for"]
-       output_dir = Path(context["output_dir"])
-       # do calculations, save files, etc.
+       plots_dir = Path(context["plots_dir"])
+       # do calculations, save extra images next to the main plot, etc.
    ```
 
 When you run `main.py`, **all** `.py` files in `features/` with a

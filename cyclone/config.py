@@ -59,7 +59,7 @@ STYLE_DEFAULTS = {
     # Output PNG name (without .png).  Empty = "<Name>_Track".
     # "{name}" is replaced by the cyclone/invest name, so
     #   output_name = {name}_Track_v2
-    # saves 95B as 95B_Track_v2.png.
+    # saves 06B as 06B_Track_v2.png.
     "output_name": "",
 }
 

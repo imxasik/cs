@@ -17,9 +17,12 @@ def run_all_features(context: dict):
         - track_obs
         - track_for
         - is_invest
-        - output_dir
+        - landfall
+        - approaches
         - map_file
         - output_image
+        - plots_dir
+        - outputs_dir
     """
     root_dir = Path(__file__).resolve().parent.parent
     features_dir = root_dir / "features"

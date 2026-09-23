@@ -15,3 +15,6 @@ venv/
 .cache/
 .pytest_cache/
 .ruff_cache/
+
+# --- Generated plots (image-only output) ---
+output/

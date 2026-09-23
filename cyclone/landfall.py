@@ -2,7 +2,7 @@
 Landfall estimation & closest-approach-per-port calculations.
 
 Pure helpers — no plotting here. Used by cyclone/plotting.py (map output),
-cyclone/cli.py (console + feature context) and features/summary.py (PDF).
+cyclone/cli.py (console + feature context).
 
 The coastline below is a deliberately coarse (0.3-0.7 deg spacing) polyline
 set covering the North Indian Ocean map area. It is accurate enough to
