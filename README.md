@@ -12,20 +12,20 @@ normally you never touch a `.py` file.
 ## The layout
 
 ```
-+--------------------------------------------------------------+
-|  HEADER   brand chip · storm title · validity · issued card  |
-+---------------------------------------------+----------------+
-|                                             |  SIDEBAR       |
-|  MAP                                        |  AT A GLANCE   |
-|  observed + forecast track, cone,           |  MAP KEY       |
-|  wind radii, ports, landfall,               |  NEAREST PORTS |
-|  collision-free label chips,                |                |
-|  scale bar, north arrow                     |                |
-+---------------------------------------------+                |
-|  BAND   map key strip · forecast table (TIME / WIND rows)    |
-+---------------------------------------------+----------------+
-|  FOOTER   wind · pressure · updated          © brand         |
-+--------------------------------------------------------------+
++-----------------------------------------------------------------+
+| HEADER  brand/logo · storm title · validity · issued card       |
++---------------------------------------------+-------------------+
+|                                             | SIDEBAR           |
+| MAP                                         | STORM SUMMARY     |
+| observed + forecast track, cone,            | MAP KEY           |
+| wind radii, ports, landfall,                | NEAREST 4 PORTS   |
+| collision-free label chips,                 |                   |
+| scale bar, north arrow                      |                   |
++---------------------------------------------+                   |
+| BAND  map key strip · forecast table        |                   |
++---------------------------------------------+-------------------+
+| FOOTER  wind · pressure · updated                    © brand    |
++-----------------------------------------------------------------+
 ```
 
 Why it stays clean, whatever the data:
@@ -121,21 +121,64 @@ still load unmodified, in any separator/case/synonym style.
 `wind_radius_pad`, and the map coverage `min_lat/max_lat/min_lon/max_lon`.
 
 Toggles (1/0): `show_cone`, `show_legend` (MAP KEY card), `show_ports`,
-`show_approach_table` (NEAREST PORTS card),
-`show_movement_table` + `show_max_wind_boxes` + `show_ace_box` (AT A
-GLANCE stats), `show_forecast_table` (bottom band table),
+`show_approach_table` (NEAREST 4 PORTS card),
+`show_movement_table` + `show_max_wind_boxes` + `show_ace_box`
+(STORM SUMMARY stats), `show_forecast_table` (bottom band table),
 `show_forecast_key` (key strip above it), `show_landfall`, `show_footer`,
 `show_grid`, `show_scale_bar`,
 `organize_by_year`, `full_track_extent`, `wind_radius_extent`.
 
-`[style]`: `theme` (design tokens, `cyclone/theme.py`), `brand_name`
-(header chip), `date_format`, `footer_text`, `forecast_time_label`,
+`[style]`: `theme` (design tokens, `cyclone/theme.py`), `brand_logo`
+(local PNG/JPG path), `brand_name` (fallback text), `date_format`,
+`footer_text`, `forecast_time_label`,
 `forecast_speed_label`, `forecast_speed_unit`, `forecast_speed_mode`
 (`wind` = forecast wind km/h, `motion` = translation speed), `output_name`
 (`{name}` placeholder supported).
 
 Every key is optional — delete anything you do not use and the defaults
 apply.
+
+### Header logo and timestamps
+
+Use your own logo by placing it in `assets/` and setting:
+
+```ini
+[style]
+brand_logo = assets/xp_weather_logo.png
+brand_name = XP WEATHER
+```
+
+PNG (including transparency) and JPG are supported. Relative paths resolve
+from the project root, not the current working directory; absolute paths
+also work. The logo keeps its original aspect ratio in a compact top-left
+slot. No logo is bundled: until you supply one, an empty or unreadable
+`brand_logo` falls back to `brand_name` (a bad path also prints a warning).
+No network access or additional runtime dependency is needed.
+
+The issue card uses the **last observation's time**, not the time you run
+the program, with separate, spaced lines such as:
+
+```text
+ISSUED 06Z, 23 SEP 2026 UTC
+LOCAL 12PM, 23 SEP 2026 (+6H)
+```
+
+`forecast_tz_offset` controls local time, including date/year rollover.
+Whole hours omit `:00`; nonzero minutes remain visible, e.g. `11:30AM`.
+
+### Readable sidebar and map labels
+
+- **STORM SUMMARY** replaces AT A GLANCE.
+- **MAP KEY** uses larger, dark labels and measured line wrapping. The
+  duplicate **TRACK & AREAS** section is removed; the forecast key strip
+  remains controlled by `show_forecast_key`.
+- **NEAREST 4 PORTS** shows the actual row count in its title (so changing
+  `approach_ports` updates the number). All three cards are packed above
+  the footer, including their gaps and shadows.
+- The footer and observed/forecast time range are bold. Latitude tick
+  labels are bold too, with a tightly measured left gutter to avoid clipping.
+- The compact kilometre scale is sized from its labelled distance at the
+  map's centre latitude, rather than using a fixed, oversized bar.
 
 ## Pluggable features (features/)
 
@@ -144,6 +187,16 @@ Copy `features/_TEMPLATE.py` to a new name and implement
 `cyclone_name`, `track_obs`, `track_for`, `is_invest`, `landfall`,
 `approaches`, `map_file`, `output_image`, `plots_dir`, `outputs_dir`.
 A crashing feature is reported and the rest continue.
+
+## Tests
+
+```bash
+python -m pip install -r requirements.txt pytest
+MPLBACKEND=Agg python -m pytest -q
+```
+
+Tests cover issue/local time formatting, logo fitting and fallback, map-key
+readability, sidebar containment, scale geometry, and unclipped latitude labels.
 
 ## License
 
