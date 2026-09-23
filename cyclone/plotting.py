@@ -267,6 +267,20 @@ def _rects_overlap(box_a, box_b, gap_px=2.0):
     )
 
 
+def _point_box_distance(box, x, y):
+    """Distance in display px from point (x, y) to box (0 if inside)."""
+    cx = min(max(x, box[0]), box[2])
+    cy = min(max(y, box[1]), box[3])
+    return ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+
+
+def _rects_overlap_area(box_a, box_b):
+    """Area in px^2 by which two display-px boxes overlap (0 if not)."""
+    w = min(box_a[2], box_b[2]) - max(box_a[0], box_b[0])
+    h = min(box_a[3], box_b[3]) - max(box_a[1], box_b[1])
+    return w * h if (w > 0 and h > 0) else 0.0
+
+
 def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
                        min_fontsize=6.5, x=0.005, y=0.045,
                        max_width_frac=0.34, cell_pad_frac=0.45,
@@ -876,8 +890,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         # Its label is drawn in the final-labels section, after the dynamic
         # zoom pass has fixed the map window.
 
-    # ------- FORECAST POINTS + LABELS --------
-    label_positions = []  # in pixel space
+    # ------- FORECAST POINTS & RINGS --------
 
     for index, (lat, lon, wind, wr24, wr34, wr64) in enumerate(
         zip(
@@ -1011,7 +1024,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 )
             }
 
-        axes_bbox = ax.bbox
         for city, plat, plon, risk in visible_cities:
             # Larger, outlined dots keep the risk colour visible over both
             # the pale land and blue ocean parts of Map.png.
@@ -1216,6 +1228,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
   # itself - taking the largest crystal-clear font that still fits a neat
   # footprint in its corner, so it never sprawls and never shrinks into
   # illegibility.  Nothing is moved and nothing is dropped.
+    legend = None
+    port_risk_legend = None
     if SHOW_LEGEND:
         # Shared card styling: rounded translucent white panel with a soft
         # slate border, compact type and clear section hierarchy.
@@ -1680,6 +1694,18 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         marker_disp.append(ax.transData.transform((ml_landfall_lon, ml_landfall_lat)))
 
     label_bboxes = []  # placed label chip bboxes, in display px
+
+    # Cards drawn over the map (legends) also block port labels: a city
+    # label that would sit under one of them is suppressed (marker kept).
+    card_boxes = []
+    if SHOW_LEGEND:
+        for _leg in (legend, port_risk_legend):
+            if _leg is not None:
+                try:
+                    _ext = _leg.get_window_extent()
+                    card_boxes.append((_ext.x0, _ext.y0, _ext.x1, _ext.y1))
+                except Exception:
+                    pass
     pt2px = ax.figure.dpi / 72.0
     marker_r_px = 14.0    # dot radius + small margin, in display px
     min_label_dist_px = 15
@@ -1876,10 +1902,14 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 and bbox[2] <= axes_bbox.x1
                 and bbox[3] <= axes_bbox.y1
             )
-            # No room: keep the marker, hide the label (never move it).
+            # No room (or a legend card would cover it): keep the marker,
+            # hide the label (never move it).
             if not inside_axes or any(
                 boxes_overlap(bbox, previous)
                 for previous in city_label_bboxes
+            ) or any(
+                boxes_overlap(bbox, card)
+                for card in card_boxes
             ):
                 continue
 
@@ -1909,16 +1939,54 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     # ---- AI point label ----
     if ai_point_in_frame:
+        ai_base_disp = ax.transData.transform((ml_landfall_lon, ml_landfall_lat))
+        ai_w_pt = _text_width_pt("AI POINT", 8, "bold")
+        ai_pad_pt = 0.2 * 8
+        ai_h_pt = 8 * 1.35
+
+        # The star sits ON the forecast track, so its label often has no
+        # fully clean slot: pick the first candidate that clears everything,
+        # otherwise the one with the smallest total violation.
+        ai_candidates = [
+            (0, -12, 'center', 'top'),     # below (default)
+            (0, 12, 'center', 'bottom'),   # above
+            (-10, 0, 'right', 'center'),   # left
+            (10, 0, 'left', 'center'),     # right
+            (-12, -12, 'right', 'top'),    # down-left
+            (12, -12, 'left', 'top'),      # down-right
+            (-12, 12, 'right', 'bottom'),  # up-left
+            (12, 12, 'left', 'bottom'),    # up-right
+        ]
+        best = None
+        for dx_pt, dy_pt, ha, va in ai_candidates:
+            cand_bbox = _chip_display_bbox(
+                ai_base_disp, (dx_pt * pt2px, dy_pt * pt2px),
+                ha, va, ai_w_pt, ai_pad_pt, ai_h_pt, pt2px)
+            violation = sum(
+                max(0.0, marker_r_px - _point_box_distance(cand_bbox, x, y))
+                for (x, y) in marker_disp
+            ) + sum(
+                _rects_overlap_area(cand_bbox, previous)
+                for previous in label_bboxes
+            )
+            if violation == 0:
+                best = (0, dx_pt, dy_pt, ha, va)
+                break
+            if best is None or violation < best[0]:
+                best = (violation, dx_pt, dy_pt, ha, va)
+        _, ai_dx_pt, ai_dy_pt, ai_ha, ai_va = best or (
+            0, *ai_candidates[0])
+
         ax.annotate(
             "AI POINT",
             xy=(ml_landfall_lon, ml_landfall_lat),
             xycoords='data',
-            xytext=(0, -12),
+            xytext=(ai_dx_pt, ai_dy_pt),
             textcoords='offset points',
             fontsize=8,
             fontweight='bold',
-            ha='center',
-            va='top',
+            ha=ai_ha,
+            va=ai_va,
             bbox=dict(
                 facecolor='white',
                 alpha=0.7,
