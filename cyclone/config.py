@@ -31,8 +31,6 @@ BOOL_DEFAULTS = {
     "show_ace_box": True,
     "show_max_wind_boxes": True,
     "show_footer": True,
-    "show_ai_position": True,
-    "show_bias_track": True,
     "organize_by_year": False,  # save into output/plots/<year>/
     "show_landfall": True,      # estimate + mark where the track hits the coast
     "show_approach_table": True,  # port table: current distance & direction per port
@@ -129,8 +127,6 @@ SHOW_ACE_BOX = _BOOLS["show_ace_box"]
 SHOW_MAX_WIND_BOXES = _BOOLS["show_max_wind_boxes"]
 SHOW_FOOTER = _BOOLS["show_footer"]
 
-SHOW_AI_POSITION = _BOOLS["show_ai_position"]
-SHOW_BIAS_TRACK = _BOOLS["show_bias_track"]
 ORGANIZE_BY_YEAR = _BOOLS["organize_by_year"]
 SHOW_LANDFALL = _BOOLS["show_landfall"]
 SHOW_APPROACH_TABLE = _BOOLS["show_approach_table"]

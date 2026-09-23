@@ -19,7 +19,7 @@ normally you never touch a `.py` file.
 |  MAP                                        |  AT A GLANCE   |
 |  observed + forecast track, cone,           |  MAP KEY       |
 |  wind radii, ports, landfall,               |  NEAREST PORTS |
-|  collision-free label chips,                |  AI OVERLAYS   |
+|  collision-free label chips,                |                |
 |  scale bar, north arrow                     |                |
 +---------------------------------------------+                |
 |  BAND   map key strip · forecast table (TIME / WIND rows)    |
@@ -45,7 +45,7 @@ Why it stays clean, whatever the data:
   1:50 m scale (Natural Earth 50 m class) so the political geography reads
   at a glance.
 * **Labels are collision-solved** — every chip (forecast points, NOW,
-  landfall, ports, AI) is placed in the first free slot around its marker;
+  landfall, ports) is placed in the first free slot around its marker;
   if no slot is free the *label* is dropped, never drawn on top of
   something else.
 * **Type sizes are measured, not guessed** — glyph widths come from the
@@ -67,14 +67,12 @@ Why it stays clean, whatever the data:
   - `basemap.py` – vector coastline renderer (crisp land at any DPI).
   - `cone.py`, `geo.py`, `ace.py`, `landfall.py`, `ports.py` – math & data.
   - `feature_manager.py` – auto-runs plugins from `features/`.
-- `features/` – pluggable add-ons (`_TEMPLATE.py` to copy); `ailoc.py`
-  (k-NN landfall "AI Position"), `aibc.py` (climatology bias track).
+- `features/` – pluggable add-ons (`_TEMPLATE.py` to copy).
 - `assets/geo/land.geojson` – GSHHS high-res coastline (public domain,
   simplified & clipped to the region; rebuild via
   `scripts/make_coastline.py`).
 - `assets/geo/borders.geojson` – country boundaries, 1:50 m scale (public
   domain; rebuild via `scripts/make_borders.py`).
-- `assets/*.csv` – AI reference data.
 - `data/` – your track files. `output/plots/` – generated PNGs.
 
 ## Mobile (Pydroid 3)
@@ -90,23 +88,28 @@ source databases — normal use never touches it.
 ```bash
 ./run.sh                        # interactive wizard
 ./run.sh data/06B.txt           # one-shot
-python main.py data/06B.txt --show-ai --dpi 200 -n my_name
+python main.py data/06B.txt --dpi 200 -n my_name
 ```
 
-## Data files — format v2, the least typing possible
+## Data files — format v2, titles + `|` columns
 
 ```
 NAME 06B                 <- optional; the file name works too
 KIND INVEST              <- optional; auto-guessed otherwise
 
 OBS
-2026-09-19 00:00   13.00   95.00   10   1007
+TIME (UTC) | LAT | LON | WIND (KT) | PRESSURE (HPA)
+2026-09-19 00:00 | 13.00 | 95.00 | 10 | 1007
 FORECAST
-2026-09-22 12:00   17.50   85.50   30   1.3    -      -
+TIME (UTC) | LAT | LON | WIND (KT) | R24 | R34 | R64
+2026-09-22 12:00 | 17.50 | 85.50 | 30 | 1.3 | - | -
 ```
 
-Fixed column order (`time lat lon wind [pressure | r24 r34 r64]`), spaces
-or commas, `-` for "none", `#` comments allowed — see `data/README.md`.
+Every section can start with a column-TITLE row (so each number is
+labelled) and the columns are split by a `|` vertical line — tidy to type,
+no wide padding to line up.  Fixed column order
+(`time lat lon wind [pressure | r24 r34 r64]`), spaces or commas work too,
+`-` for "none", `#` comments allowed — see `data/README.md`.
 Older legacy files (name header + column headers + `=== FORECAST ===`)
 still load unmodified, in any separator/case/synonym style.
 
@@ -122,7 +125,7 @@ Toggles (1/0): `show_cone`, `show_legend` (MAP KEY card), `show_ports`,
 `show_movement_table` + `show_max_wind_boxes` + `show_ace_box` (AT A
 GLANCE stats), `show_forecast_table` (bottom band table),
 `show_forecast_key` (key strip above it), `show_landfall`, `show_footer`,
-`show_ai_position`, `show_bias_track`, `show_grid`, `show_scale_bar`,
+`show_grid`, `show_scale_bar`,
 `organize_by_year`, `full_track_extent`, `wind_radius_extent`.
 
 `[style]`: `theme` (design tokens, `cyclone/theme.py`), `brand_name`

@@ -218,8 +218,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--buffer", type=float, default=None, help="map padding around track (default: config)")
     p.add_argument("--ucr", type=float, default=None, help="cone growth rate (default: config)")
     p.add_argument("--dpi", type=int, default=None, help="output PNG DPI (default: config)")
-    p.add_argument("--show-ai", action="store_true", help="force AI overlays ON (position + BC track)")
-    p.add_argument("--no-ai", action="store_true", help="force AI overlays OFF")
     p.add_argument("--no-features", action="store_true", help="skip plugins in features/")
     p.add_argument("-o", "--outdir", default=None, help="output root folder (default: output/)")
     p.add_argument("-n", "--name", default=None,
@@ -259,17 +257,6 @@ def main(argv=None) -> int:
             args.buffer = ask_float_with_default(f"{BOLD}BUFFER{RESET}", cfg.BUFFER)
         if args.ucr is None:
             args.ucr = ask_float_with_default(f"{BOLD}UCR{RESET}", cfg.UCR)
-        if args.show_ai is False and not args.no_ai:
-            change_ai = _ask(
-                f"{BOLD}Change AI overlays?{RESET} [current: "
-                f"{'yes' if cfg.SHOW_AI_POSITION or cfg.SHOW_BIAS_TRACK else 'no'}] "
-                f"{GREEN}(Enter=no){RESET}: "
-            ).lower()
-            if change_ai in ("1", "y", "yes", "true", "on"):
-                args.show_ai = ask_bool_with_default(
-                    f"{BOLD}Show AI overlays (position + BC track){RESET}", True
-                )
-                args.no_ai = not args.show_ai
 
     if args.buffer is not None:
         plotting.BUFFER = cfg.BUFFER = args.buffer
@@ -277,12 +264,6 @@ def main(argv=None) -> int:
         plotting.UCR = cfg.UCR = args.ucr
     if args.dpi is not None:
         plotting.OUTPUT_DPI = args.dpi
-    if args.show_ai:
-        plotting.SHOW_AI_POSITION = cfg.SHOW_AI_POSITION = True
-        plotting.SHOW_BIAS_TRACK = cfg.SHOW_BIAS_TRACK = True
-    if args.no_ai:
-        plotting.SHOW_AI_POSITION = cfg.SHOW_AI_POSITION = False
-        plotting.SHOW_BIAS_TRACK = cfg.SHOW_BIAS_TRACK = False
     if args.full_track:
         plotting.FULL_TRACK_EXTENT = cfg.FULL_TRACK_EXTENT = True
 
