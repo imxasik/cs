@@ -7,7 +7,7 @@ shows all of them, newest first.
 ## File format
 
 ```
-Cyclone Name: DITWAH              <- or:  Invest Name: 95B
+Cyclone Name: DITWAH              <- or:  Invest Name: 06B
 Synoptic Time, Latitude, Longitude, Intensity, Pressure
 2025-11-25 00:00, 05.20, 78.90, 15, 1009
 ...one row per 6-h observation...

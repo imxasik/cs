@@ -216,6 +216,71 @@ def _fit_text(text, max_width_pt, fontsize, weight="normal"):
     return (text[:lo] + "\u2026") if lo else "\u2026"
 
 
+def _chip_display_bbox(base_disp, offset_px, ha, va,
+                       text_w_pt, pad_pt, text_h_pt, pt_to_px):
+    """
+    Padded bbox (x0, y0, x1, y1) of an annotation chip, in display pixels.
+
+    `base_disp` is the marker's display position and `offset_px` the (dx, dy)
+    offset of the text anchor in display px.  `text_w_pt` / `text_h_pt` are
+    the glyph width / height in points and `pad_pt` the box padding in
+    points: the rounded chip extends `pad_pt` beyond the text on ALL sides,
+    so e.g. with va='bottom' the box starts `pad_pt` BELOW the anchor.
+    """
+    anchor = np.array(base_disp) + np.array(offset_px, dtype=float)
+    w_px = text_w_pt * pt_to_px
+    h_px = text_h_pt * pt_to_px
+    p_px = pad_pt * pt_to_px
+
+    if ha == 'left':
+        x0, x1 = anchor[0] - p_px, anchor[0] + w_px + p_px
+    elif ha == 'right':
+        x0, x1 = anchor[0] - w_px - p_px, anchor[0] + p_px
+    else:
+        half = (w_px + 2.0 * p_px) / 2.0
+        x0, x1 = anchor[0] - half, anchor[0] + half
+
+    if va == 'bottom':
+        y0, y1 = anchor[1] - p_px, anchor[1] + h_px + p_px
+    elif va == 'top':
+        y0, y1 = anchor[1] - h_px - p_px, anchor[1] + p_px
+    else:
+        half = (h_px + 2.0 * p_px) / 2.0
+        y0, y1 = anchor[1] - half, anchor[1] + half
+    return (x0, y0, x1, y1)
+
+
+def _bbox_hits_point(box, x, y, r):
+    """True if the point (x, y) lies within `r` display px of the box."""
+    cx = min(max(x, box[0]), box[2])
+    cy = min(max(y, box[1]), box[3])
+    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+
+
+def _rects_overlap(box_a, box_b, gap_px=2.0):
+    """True if two display-px boxes overlap (or are closer than gap_px)."""
+    return not (
+        box_a[2] + gap_px <= box_b[0]
+        or box_b[2] + gap_px <= box_a[0]
+        or box_a[3] + gap_px <= box_b[1]
+        or box_b[3] + gap_px <= box_a[1]
+    )
+
+
+def _point_box_distance(box, x, y):
+    """Distance in display px from point (x, y) to box (0 if inside)."""
+    cx = min(max(x, box[0]), box[2])
+    cy = min(max(y, box[1]), box[3])
+    return ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+
+
+def _rects_overlap_area(box_a, box_b):
+    """Area in px^2 by which two display-px boxes overlap (0 if not)."""
+    w = min(box_a[2], box_b[2]) - max(box_a[0], box_b[0])
+    h = min(box_a[3], box_b[3]) - max(box_a[1], box_b[1])
+    return w * h if (w > 0 and h > 0) else 0.0
+
+
 def _add_dynamic_table(ax, col_labels, rows, *, fontsize=11.0,
                        min_fontsize=6.5, x=0.005, y=0.045,
                        max_width_frac=0.34, cell_pad_frac=0.45,
@@ -822,11 +887,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         lf_lon, lf_lat = landfall_info["lon"], landfall_info["lat"]
         ax.plot(lf_lon, lf_lat, "X", ms=11, mec="k",
                 mfc="red", zorder=9)
-        # The label itself is drawn after the forecast point labels below,
-        # so that its overlap check can see them (see "LANDFALL LABEL").
+        # Its label is drawn in the final-labels section, after the dynamic
+        # zoom pass has fixed the map window.
 
-    # ------- FORECAST POINTS + LABELS --------
-    label_positions = []  # in pixel space
+    # ------- FORECAST POINTS & RINGS --------
 
     for index, (lat, lon, wind, wr24, wr34, wr64) in enumerate(
         zip(
@@ -873,131 +937,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                         zorder=5.5
                     )
                 )
-
-        # Label with constant screen offset + overlap check
-        tnd_str = track_data_for['tnd'].iloc[index].strftime("%d/%H")
-        label_text = f"{tnd_str}, {wind}KT"
-
-        fig = ax.figure
-        dpi = fig.dpi
-
-        candidate_offsets = [
-            (5, 5, 'left', 'bottom'),      # up-right
-            (10, 0, 'left', 'center'),     # right
-            (-5, 5, 'right', 'bottom'),    # up-left
-            (0, 10, 'center', 'bottom'),   # above
-            (5, -5, 'left', 'top'),        # down-right
-        ]
-
-        min_dist_px = 15
-        base_disp = ax.transData.transform((lon, lat))
-
-        placed = False
-        for dx_pt, dy_pt, ha, va in candidate_offsets:
-            dx_px = dx_pt * dpi / 72.0
-            dy_px = dy_pt * dpi / 72.0
-            cand_disp = base_disp + np.array([dx_px, dy_px])
-
-            if all(
-                np.hypot(cand_disp[0] - x, cand_disp[1] - y) > min_dist_px
-                for (x, y) in label_positions
-            ):
-                label_positions.append((cand_disp[0], cand_disp[1]))
-
-                ax.annotate(
-                    label_text,
-                    xy=(lon, lat),
-                    xycoords='data',
-                    xytext=(dx_pt, dy_pt),
-                    textcoords='offset points',
-                    fontsize=7,
-                    fontweight='bold',
-                    fontfamily='arial',
-                    zorder=5,
-                    bbox=dict(
-                        facecolor='white',
-                        alpha=0.6,
-                        boxstyle='round,pad=0.50'
-                    ),
-                    ha=ha,
-                    va=va
-                )
-                placed = True
-                break
-
-        if not placed:
-            ax.annotate(
-                label_text,
-                xy=(lon, lat),
-                xycoords='data',
-                xytext=(5, 5),
-                textcoords='offset points',
-                fontsize=6,
-                fontweight='bold',
-                fontfamily='arial',
-                zorder=5,
-                bbox=dict(
-                    facecolor='white',
-                    alpha=0.6,
-                    boxstyle='round,pad=0.50'
-                ),
-                ha='left',
-                va='bottom'
-            )
-
-    # -------------------- LANDFALL LABEL --------------------
-    # Drawn after the forecast labels so the overlap check can see them.
-    # Mirrors the forecast labels: they sit up-right of their marker, the
-    # landfall label sits down-left of the red X.
-    if SHOW_LANDFALL and landfall_info is not None:
-        lf_label = f"LF-{landfall_info['time_str']}"
-
-        fig = ax.figure
-        dpi = fig.dpi
-
-        lf_candidates = [
-            (-5, -5, 'right', 'top'),     # down-left (default)
-            (-10, 0, 'right', 'center'),  # left
-            (-5, 5, 'right', 'bottom'),   # up-left
-            (0, 10, 'center', 'bottom'),  # above
-            (5, -5, 'left', 'top'),       # down-right
-        ]
-
-        lf_min_dist_px = 15
-        lf_base_disp = ax.transData.transform((lf_lon, lf_lat))
-        lf_dx_pt, lf_dy_pt, lf_ha, lf_va = lf_candidates[0]
-
-        for dx_pt, dy_pt, ha, va in lf_candidates:
-            dx_px = dx_pt * dpi / 72.0
-            dy_px = dy_pt * dpi / 72.0
-            cand_disp = lf_base_disp + np.array([dx_px, dy_px])
-
-            if all(
-                np.hypot(cand_disp[0] - x, cand_disp[1] - y) > lf_min_dist_px
-                for (x, y) in label_positions
-            ):
-                lf_dx_pt, lf_dy_pt, lf_ha, lf_va = dx_pt, dy_pt, ha, va
-                label_positions.append((cand_disp[0], cand_disp[1]))
-                break
-
-        ax.annotate(
-            lf_label,
-            xy=(lf_lon, lf_lat),
-            xycoords='data',
-            xytext=(lf_dx_pt, lf_dy_pt),
-            textcoords='offset points',
-            fontsize=8,
-            fontweight='bold',
-            ha=lf_ha,
-            va=lf_va,
-            bbox=dict(
-                facecolor='white',
-                alpha=0.8,
-                edgecolor='darkred',
-                boxstyle='round,pad=0.3'
-            ),
-            zorder=10
-        )
 
     # -------------------- TIME STRINGS --------------------
     observed_start_time = track_data_obs['tnd'].iloc[0].strftime(DATE_FORMAT)
@@ -1061,57 +1000,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 ))
 
     if SHOW_PORTS:
-        # City labels use real screen-space rectangles, not just marker-centre
-        # distances.  That matters for neighbouring ports such as Balasore,
-        # Digha and Contai, whose names have very different widths.
-        city_label_bboxes = []
-        fig = ax.figure
-        dpi = fig.dpi
-        label_fontsize = 8
-        pt_to_px = dpi / 72.0
-        label_pad_pt = 0.26 * label_fontsize + 2.0
-        label_height_pt = label_fontsize * 1.25 + 2.0 * label_pad_pt
-
-        # Keep every label in its normal position above its marker. If that
-        # fixed position collides with another label, suppress the label but
-        # keep its risk-coloured marker visible; no label is moved around the
-        # map.
-        label_candidates = [
-            (0, 10, 'center', 'bottom'),
-        ]
-
-        def label_bbox(base_disp, dx_pt, dy_pt, ha, va, width_pt):
-            """Approximate an annotation's padded bbox in display pixels."""
-            anchor = base_disp + np.array([
-                dx_pt * pt_to_px,
-                dy_pt * pt_to_px,
-            ])
-            width_px = (width_pt + 2.0 * label_pad_pt) * pt_to_px
-            height_px = label_height_pt * pt_to_px
-
-            if ha == 'left':
-                x0, x1 = anchor[0], anchor[0] + width_px
-            elif ha == 'right':
-                x0, x1 = anchor[0] - width_px, anchor[0]
-            else:
-                x0, x1 = anchor[0] - width_px / 2.0, anchor[0] + width_px / 2.0
-
-            if va == 'bottom':
-                y0, y1 = anchor[1], anchor[1] + height_px
-            elif va == 'top':
-                y0, y1 = anchor[1] - height_px, anchor[1]
-            else:
-                y0, y1 = anchor[1] - height_px / 2.0, anchor[1] + height_px / 2.0
-            return (x0, y0, x1, y1)
-
-        def boxes_overlap(box_a, box_b, gap_px=3.0):
-            return not (
-                box_a[2] + gap_px <= box_b[0]
-                or box_b[2] + gap_px <= box_a[0]
-                or box_a[3] + gap_px <= box_b[1]
-                or box_b[3] + gap_px <= box_a[1]
-            )
-
         # For the remaining special coastal label, retain the marker but hide
         # only the text when landfall is directly over the port (<100 km) or
         # that port is the closest one to the estimated landfall.
@@ -1136,7 +1024,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 )
             }
 
-        axes_bbox = ax.bbox
         for city, plat, plon, risk in visible_cities:
             # Larger, outlined dots keep the risk colour visible over both
             # the pale land and blue ocean parts of Map.png.
@@ -1153,53 +1040,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
             if city in hidden_near_landfall_ports:
                 continue
-
-            base_disp = ax.transData.transform((plon, plat))
-            width_pt = _text_width_pt(city, label_fontsize, weight='bold')
-            chosen = None
-
-            for dx_pt, dy_pt, ha, va in label_candidates:
-                bbox = label_bbox(base_disp, dx_pt, dy_pt, ha, va, width_pt)
-                inside_axes = (
-                    bbox[0] >= axes_bbox.x0
-                    and bbox[1] >= axes_bbox.y0
-                    and bbox[2] <= axes_bbox.x1
-                    and bbox[3] <= axes_bbox.y1
-                )
-                if inside_axes and not any(
-                    boxes_overlap(bbox, previous)
-                    for previous in city_label_bboxes
-                ):
-                    chosen = (dx_pt, dy_pt, ha, va, bbox)
-                    break
-
-            if chosen is None:
-                continue
-
-            dx_pt, dy_pt, ha, va, bbox = chosen
-            city_label_bboxes.append(bbox)
-            ax.annotate(
-                city,
-                xy=(plon, plat),
-                xycoords='data',
-                xytext=(dx_pt, dy_pt),
-                textcoords='offset points',
-                fontsize=label_fontsize,
-                fontweight='bold',
-                color='#111827',
-                ha=ha,
-                va=va,
-                bbox=dict(
-                    facecolor='white',
-                    alpha=0.94,
-                    edgecolor=risk["color"],
-                    linewidth=1.8,
-                    boxstyle='round,pad=0.26',
-                ),
-                # Track, wind radii and forecast labels stay in front of the
-                # port label, so the forecast remains readable underneath.
-                zorder=2,
-            )
 
     # -------------------- MOVEMENT INFO --------------------
     pressure = track_data_obs["Pressure"].iloc[-1]
@@ -1388,6 +1228,8 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
   # itself - taking the largest crystal-clear font that still fits a neat
   # footprint in its corner, so it never sprawls and never shrinks into
   # illegibility.  Nothing is moved and nothing is dropped.
+    legend = None
+    port_risk_legend = None
     if SHOW_LEGEND:
         # Shared card styling: rounded translucent white panel with a soft
         # slate border, compact type and clear section hierarchy.
@@ -1629,24 +1471,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 facecolor='yellow',
                 zorder=8
             )
-            ax.annotate(
-                "AI POINT",
-                xy=(ml_landfall_lon, ml_landfall_lat),
-                xycoords='data',
-                xytext=(0, -12),
-                textcoords='offset points',
-                fontsize=8,
-                fontweight='bold',
-                ha='center',
-                va='top',
-                bbox=dict(
-                    facecolor='white',
-                    alpha=0.7,
-                    boxstyle='round,pad=0.2'
-                ),
-                zorder=9
-            )            
-            
     # ----------- TITLES & MAX WIND BOXES ------
     title = (
         f"OBSERVED: {observed_start_time} To {observed_end_time}\n"
@@ -1845,6 +1669,331 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 ax.set_xlim(_xc - _half_lon, _xc + _half_lon)
         except Exception as e:
             print(f"[WARN] Wind-radius card clearance failed: {e}")
+
+    # ------------- FINAL MAP LABELS -----------------
+    # All text labels are placed only after the clearance pass has fixed
+    # the window, so every screen-space collision check runs at the final
+    # zoom (a label placed before the zoom would drift into a marker once
+    # the window is rescaled).
+
+    # Marker positions (final window) that labels must avoid.
+    marker_disp = []
+    for lat, lon in zip(track_data_obs["Latitude"], track_data_obs["Longitude"]):
+        marker_disp.append(ax.transData.transform((lon, lat)))
+    for lat, lon in zip(track_data_for["Latitude"], track_data_for["Longitude"]):
+        marker_disp.append(ax.transData.transform((lon, lat)))
+    if SHOW_LANDFALL and landfall_info is not None:
+        marker_disp.append(ax.transData.transform((lf_lon, lf_lat)))
+    ai_point_in_frame = (
+        SHOW_AI_POSITION
+        and ml_landfall_lat is not None and ml_landfall_lon is not None
+        and lat_min <= ml_landfall_lat <= lat_max
+        and lon_min <= ml_landfall_lon <= lon_max
+    )
+    if ai_point_in_frame:
+        marker_disp.append(ax.transData.transform((ml_landfall_lon, ml_landfall_lat)))
+
+    label_bboxes = []  # placed label chip bboxes, in display px
+
+    # Cards drawn over the map (legends) also block port labels: a city
+    # label that would sit under one of them is suppressed (marker kept).
+    card_boxes = []
+    if SHOW_LEGEND:
+        for _leg in (legend, port_risk_legend):
+            if _leg is not None:
+                try:
+                    _ext = _leg.get_window_extent()
+                    card_boxes.append((_ext.x0, _ext.y0, _ext.x1, _ext.y1))
+                except Exception:
+                    pass
+    pt2px = ax.figure.dpi / 72.0
+    marker_r_px = 14.0    # dot radius + small margin, in display px
+    min_label_dist_px = 15
+
+    # ---- forecast point labels ----
+    if len(track_data_for) > 0:
+        for index in range(len(track_data_for)):
+            lat = float(track_data_for["Latitude"].iloc[index])
+            lon = float(track_data_for["Longitude"].iloc[index])
+            wind = track_data_for["Intensity"].iloc[index]
+            label_text = (
+                f"{track_data_for['tnd'].iloc[index].strftime('%d/%H')}, "
+                f"{wind}KT"
+            )
+
+            base_disp = ax.transData.transform((lon, lat))
+            label_w_pt = _text_width_pt(label_text, 7, "bold")
+            label_pad_pt = 0.45 * 7
+            label_h_pt = 7 * 1.35  # text height only; chip pad added by the bbox fn
+
+            candidate_offsets = [
+                (5, 5, 'left', 'bottom'),      # up-right
+                (10, 0, 'left', 'center'),     # right
+                (-5, 5, 'right', 'bottom'),    # up-left
+                (0, 10, 'center', 'bottom'),   # above
+                (5, -5, 'left', 'top'),        # down-right
+            ]
+
+            placed = False
+            for dx_pt, dy_pt, ha, va in candidate_offsets:
+                dx_px = dx_pt * pt2px
+                dy_px = dy_pt * pt2px
+                cand_disp = base_disp + np.array([dx_px, dy_px])
+
+                # The candidate must clear other labels (anchor distance)
+                # and every track dot / landfall X / AI star (chip-
+                # rectangle distance), so a label can never be swallowed
+                # by a neighbouring marker.
+                cand_bbox = _chip_display_bbox(
+                    base_disp, (dx_px, dy_px), ha, va,
+                    label_w_pt, label_pad_pt, label_h_pt, pt2px)
+                if not any(
+                    _bbox_hits_point(cand_bbox, x, y, marker_r_px)
+                    for (x, y) in marker_disp
+                ) and not any(
+                    _rects_overlap(cand_bbox, previous)
+                    for previous in label_bboxes
+                ):
+                    label_bboxes.append(cand_bbox)
+                    ax.annotate(
+                        label_text,
+                        xy=(lon, lat),
+                        xycoords='data',
+                        xytext=(dx_pt, dy_pt),
+                        textcoords='offset points',
+                        fontsize=7,
+                        fontweight='bold',
+                        zorder=5,
+                        bbox=dict(
+                            facecolor='white',
+                            alpha=0.88,
+                            edgecolor='#475569',
+                            linewidth=0.7,
+                            boxstyle='round,pad=0.45'
+                        ),
+                        ha=ha,
+                        va=va
+                    )
+                    placed = True
+                    break
+
+            if not placed:
+                ax.annotate(
+                    label_text,
+                    xy=(lon, lat),
+                    xycoords='data',
+                    xytext=(5, 5),
+                    textcoords='offset points',
+                    fontsize=6,
+                    fontweight='bold',
+                    zorder=5,
+                    bbox=dict(
+                        facecolor='white',
+                        alpha=0.88,
+                        edgecolor='#475569',
+                        linewidth=0.7,
+                        boxstyle='round,pad=0.45'
+                    ),
+                    ha='left',
+                    va='bottom'
+                )
+
+    # ---- landfall label ----
+    lf_label_bbox = None
+    if SHOW_LANDFALL and landfall_info is not None:
+        lf_label = f"LF-{landfall_info['time_str']}"
+        lf_base_disp = ax.transData.transform((lf_lon, lf_lat))
+        # Every marker except the landfall X itself (the label is attached
+        # to it, so its own dot must not veto the placement).
+        lf_markers = [
+            m for m in marker_disp
+            if np.hypot(m[0] - lf_base_disp[0], m[1] - lf_base_disp[1]) > 1.0
+        ]
+        lf_w_pt = _text_width_pt(lf_label, 8, "bold")
+        lf_pad_pt = 0.3 * 8
+        lf_h_pt = 8 * 1.35  # text height only; chip pad added by the bbox fn
+
+        lf_candidates = [
+            (-5, -5, 'right', 'top'),     # down-left (default)
+            (-10, 0, 'right', 'center'),  # left
+            (-5, 5, 'right', 'bottom'),   # up-left
+            (0, 10, 'center', 'bottom'),  # above
+            (5, -5, 'left', 'top'),       # down-right
+        ]
+        lf_dx_pt, lf_dy_pt, lf_ha, lf_va = lf_candidates[0]
+        for dx_pt, dy_pt, ha, va in lf_candidates:
+            dx_px = dx_pt * pt2px
+            dy_px = dy_pt * pt2px
+            cand_disp = lf_base_disp + np.array([dx_px, dy_px])
+            cand_bbox = _chip_display_bbox(
+                lf_base_disp, (dx_px, dy_px), ha, va,
+                lf_w_pt, lf_pad_pt, lf_h_pt, pt2px)
+            if not any(
+                _bbox_hits_point(cand_bbox, x, y, marker_r_px)
+                for (x, y) in lf_markers
+            ) and not any(
+                _rects_overlap(cand_bbox, previous)
+                for previous in label_bboxes
+            ):
+                lf_dx_pt, lf_dy_pt, lf_ha, lf_va = dx_pt, dy_pt, ha, va
+                break
+
+        ax.annotate(
+            lf_label,
+            xy=(lf_lon, lf_lat),
+            xycoords='data',
+            xytext=(lf_dx_pt, lf_dy_pt),
+            textcoords='offset points',
+            fontsize=8,
+            fontweight='bold',
+            ha=lf_ha,
+            va=lf_va,
+            bbox=dict(
+                facecolor='white',
+                alpha=0.94,
+                edgecolor='darkred',
+                linewidth=1.2,
+                boxstyle='round,pad=0.3'
+            ),
+            zorder=10
+        )
+
+        # Record the chip's display bbox so port labels can avoid it.
+        lf_label_bbox = _chip_display_bbox(
+            lf_base_disp, (lf_dx_pt * pt2px, lf_dy_pt * pt2px),
+            lf_ha, lf_va, lf_w_pt, lf_pad_pt, lf_h_pt, pt2px)
+        label_bboxes.append(lf_label_bbox)
+
+    # ---- port labels ----
+    if SHOW_PORTS and visible_cities:
+        # City labels use real screen-space rectangles, not just marker-
+        # centre distances.  That matters for neighbouring ports such as
+        # Balasore, Digha and Contai, whose names have very different
+        # widths.  The landfall chip counts as an obstacle too.
+        # Obstacles: every chip already placed (forecast + landfall labels)
+        # plus the city chips placed in this loop.
+        city_label_bboxes = list(label_bboxes)
+        label_fontsize = 8
+        label_pad_pt = 0.26 * label_fontsize + 2.0
+        label_height_pt = label_fontsize * 1.25  # text height only
+
+        def boxes_overlap(box_a, box_b, gap_px=3.0):
+            return not (
+                box_a[2] + gap_px <= box_b[0]
+                or box_b[2] + gap_px <= box_a[0]
+                or box_a[3] + gap_px <= box_b[1]
+                or box_b[3] + gap_px <= box_a[1]
+            )
+
+        axes_bbox = ax.bbox
+        for city, plat, plon, risk in visible_cities:
+            if city in hidden_near_landfall_ports:
+                continue
+
+            base_disp = ax.transData.transform((plon, plat))
+            width_pt = _text_width_pt(city, label_fontsize, weight='bold')
+            bbox = _chip_display_bbox(
+                base_disp, (0.0, 10.0 * pt2px),
+                'center', 'bottom', width_pt, label_pad_pt,
+                label_height_pt, pt2px)
+            inside_axes = (
+                bbox[0] >= axes_bbox.x0
+                and bbox[1] >= axes_bbox.y0
+                and bbox[2] <= axes_bbox.x1
+                and bbox[3] <= axes_bbox.y1
+            )
+            # No room (or a legend card would cover it): keep the marker,
+            # hide the label (never move it).
+            if not inside_axes or any(
+                boxes_overlap(bbox, previous)
+                for previous in city_label_bboxes
+            ) or any(
+                boxes_overlap(bbox, card)
+                for card in card_boxes
+            ):
+                continue
+
+            city_label_bboxes.append(bbox)
+            ax.annotate(
+                city,
+                xy=(plon, plat),
+                xycoords='data',
+                xytext=(0, 10),
+                textcoords='offset points',
+                fontsize=label_fontsize,
+                fontweight='bold',
+                color='#111827',
+                ha='center',
+                va='bottom',
+                bbox=dict(
+                    facecolor='white',
+                    alpha=0.94,
+                    edgecolor=risk["color"],
+                    linewidth=1.8,
+                    boxstyle='round,pad=0.26',
+                ),
+                # Track, wind radii and forecast labels stay in front of the
+                # port label, so the forecast remains readable underneath.
+                zorder=2,
+            )
+
+    # ---- AI point label ----
+    if ai_point_in_frame:
+        ai_base_disp = ax.transData.transform((ml_landfall_lon, ml_landfall_lat))
+        ai_w_pt = _text_width_pt("AI POINT", 8, "bold")
+        ai_pad_pt = 0.2 * 8
+        ai_h_pt = 8 * 1.35
+
+        # The star sits ON the forecast track, so its label often has no
+        # fully clean slot: pick the first candidate that clears everything,
+        # otherwise the one with the smallest total violation.
+        ai_candidates = [
+            (0, -12, 'center', 'top'),     # below (default)
+            (0, 12, 'center', 'bottom'),   # above
+            (-10, 0, 'right', 'center'),   # left
+            (10, 0, 'left', 'center'),     # right
+            (-12, -12, 'right', 'top'),    # down-left
+            (12, -12, 'left', 'top'),      # down-right
+            (-12, 12, 'right', 'bottom'),  # up-left
+            (12, 12, 'left', 'bottom'),    # up-right
+        ]
+        best = None
+        for dx_pt, dy_pt, ha, va in ai_candidates:
+            cand_bbox = _chip_display_bbox(
+                ai_base_disp, (dx_pt * pt2px, dy_pt * pt2px),
+                ha, va, ai_w_pt, ai_pad_pt, ai_h_pt, pt2px)
+            violation = sum(
+                max(0.0, marker_r_px - _point_box_distance(cand_bbox, x, y))
+                for (x, y) in marker_disp
+            ) + sum(
+                _rects_overlap_area(cand_bbox, previous)
+                for previous in label_bboxes
+            )
+            if violation == 0:
+                best = (0, dx_pt, dy_pt, ha, va)
+                break
+            if best is None or violation < best[0]:
+                best = (violation, dx_pt, dy_pt, ha, va)
+        _, ai_dx_pt, ai_dy_pt, ai_ha, ai_va = best or (
+            0, *ai_candidates[0])
+
+        ax.annotate(
+            "AI POINT",
+            xy=(ml_landfall_lon, ml_landfall_lat),
+            xycoords='data',
+            xytext=(ai_dx_pt, ai_dy_pt),
+            textcoords='offset points',
+            fontsize=8,
+            fontweight='bold',
+            ha=ai_ha,
+            va=ai_va,
+            bbox=dict(
+                facecolor='white',
+                alpha=0.7,
+                boxstyle='round,pad=0.2'
+            ),
+            zorder=9
+        )
 
     # ------------- FINAL STYLING & SAVE ----------
     ax.grid(color='gray', linestyle='--', linewidth=0.5, alpha=0.5)

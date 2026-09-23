@@ -13,7 +13,7 @@ PYTHON=${PYTHON:-python3}
 
 # Install dependencies on first run (or whenever imports are missing).
 if [ -z "$SKIP_INSTALL" ]; then
-  "$PYTHON" -c "import matplotlib, numpy, pandas, scipy, reportlab" 2>/dev/null || \
+  "$PYTHON" -c "import matplotlib, numpy, pandas, scipy" 2>/dev/null || \
     "$PYTHON" -m pip install -r requirements.txt
 fi
 

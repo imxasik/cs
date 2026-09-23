@@ -13,7 +13,7 @@ Two ways to run
 2. One-shot CLI (laptop / Termux / automation)::
 
        python main.py data/2025/ditwah.txt
-       python main.py data/95B.txt --buffer 2.5 --ucr 0.25 --no-features
+       python main.py data/06B.txt --buffer 2.5 --ucr 0.25 --no-features
        python main.py --list
 
    With a file (or any option) given, no questions are asked: every
@@ -152,9 +152,7 @@ def process(cyclone_name, track_obs, track_for, is_invest,
               f"Plot will use a blank background.{RESET}")
 
     plots_dir = out_root / "plots"
-    files_dir = out_root / "files"
     plots_dir.mkdir(parents=True, exist_ok=True)
-    files_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.ORGANIZE_BY_YEAR:
         if not track_obs.empty:
@@ -185,15 +183,12 @@ def process(cyclone_name, track_obs, track_for, is_invest,
             "is_invest": is_invest,
             "landfall": results.get("landfall"),
             "approaches": results.get("approaches", []),
-            "output_dir": str(files_dir),
             "map_file": str(map_file),
             "output_image": str(output_path),
             "plots_dir": str(plots_dir),
-            "files_dir": str(files_dir),
             "outputs_dir": str(out_root),
         }
         run_all_features(context)
-        print(f"{GREEN}✓ Feature outputs in:{RESET} {BOLD}{files_dir}{RESET}")
 
     return output_path
 

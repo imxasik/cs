@@ -10,9 +10,10 @@ The context dict contains:
     - track_obs
     - track_for
     - is_invest
-    - output_dir
     - map_file
     - output_image
+    - plots_dir   (str: output/plots — save any extra images here)
+    - outputs_dir (str: output/)
     - landfall    (dict or None: time/lon/lat/place/place_km/time_str)
     - approaches  (list of dicts: name/dist_km/bearing/dir_str for the
                    CURRENT centre, plus approach_km/time/time_str/past.
