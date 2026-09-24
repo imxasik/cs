@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>XP WEATHER — Cyclone Tracker | Super Dynamic, Gorgeous, Mobile-First</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f1f5f9; --paper:#ffffff; --ink:#0f172a; --ink-soft:#475569; --ink-faint:#94a3b8;
+  --navy:#0f172a; --accent:#e11d48; --accent-soft:#ffe4e6; --sea:#e0f2fe; --land:#fefce8;
+  --border:#e2e8f0; --radius:16px; --shadow:0 10px 30px rgba(15,23,42,0.08),0 2px 8px rgba(15,23,42,0.06);
+  --shadow-lg:0 20px 60px rgba(15,23,42,0.12),0 4px 16px rgba(15,23,42,0.08);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Outfit',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-weight:800;letter-spacing:-0.02em;line-height:1.15}
+.mono{font-family:'JetBrains Mono',monospace}
+.container{max-width:1280px;margin:0 auto;padding:0 16px}
+@media(min-width:768px){.container{padding:0 24px}}
+/* header */
+header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.86);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.header-inner{display:flex;align-items:center;justify-content:space-between;padding:12px 0;gap:12px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-pill{background:var(--navy);color:#fff;padding:6px 14px;border-radius:999px;font-weight:800;font-size:13px;letter-spacing:0.04em}
+.title{font-size:18px;font-weight:800}
+@media(min-width:768px){.title{font-size:22px}}
+.header-meta{font-size:12px;color:var(--ink-faint);text-align:right;line-height:1.3}
+@media(max-width:640px){.header-meta{display:none}}
+/* hero */
+.hero{padding:20px 0 12px}
+.hero-grid{display:grid;gap:18px}
+@media(min-width:1024px){.hero-grid{grid-template-columns:1.15fr 0.85fr}}
+.card{background:var(--paper);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.card-pad{padding:16px}
+@media(min-width:768px){.card-pad{padding:22px}}
+.badge{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.03em}
+.badge-dot{width:8px;height:8px;background:var(--accent);border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:0.8}}
+.hero-img{width:100%;height:auto;display:block;border-radius:12px;transition:transform 0.4s}
+.hero-img-wrap{position:relative;overflow:hidden;border-radius:12px;background:#fff}
+.hero-img-wrap:hover .hero-img{transform:scale(1.015)}
+.zoom-hint{position:absolute;bottom:10px;right:10px;background:rgba(15,23,42,0.88);color:#fff;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px}
+@media(max-width:640px){.zoom-hint{display:none}}
+/* features */
+.features{display:grid;gap:12px;margin:14px 0}
+@media(min-width:768px){.features{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:1024px){.features{grid-template-columns:repeat(3,1fr)}}
+.feat{background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);transition:transform 0.2s,box-shadow 0.2s}
+.feat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.feat-ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:8px}
+.feat h3{font-size:14px;margin:0 0 4px}
+.feat p{font-size:13px;color:var(--ink-soft);margin:0;line-height:1.5}
+/* map */
+#map{width:100%;height:62vh;min-height:380px;max-height:720px;border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow);z-index:1}
+@media(min-width:768px){#map{height:72vh;min-height:520px}}
+.map-controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.btn{appearance:none;border:1px solid var(--border);background:var(--paper);color:var(--ink);padding:10px 16px;border-radius:999px;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.2s;box-shadow:var(--shadow);display:inline-flex;align-items:center;gap:8px}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg);border-color:var(--ink-faint)}
+.btn-primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn-accent{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* gallery */
+.gallery{display:grid;gap:16px;margin:18px 0}
+@media(min-width:768px){.gallery{grid-template-columns:repeat(2,1fr)}}
+.g-item{position:relative;overflow:hidden;border-radius:var(--radius);background:var(--paper);border:1px solid var(--border);box-shadow:var(--shadow);transition:transform 0.25s}
+.g-item:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.g-item img{width:100%;height:auto;display:block;transition:transform 0.5s}
+.g-item:hover img{transform:scale(1.02)}
+.g-cap{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(15,23,42,0.92),transparent);color:#fff;padding:18px 14px 12px}
+.g-cap h4{margin:0;font-size:15px}
+.g-cap p{margin:2px 0 0;font-size:12px;opacity:0.85}
+/* footer */
+footer{margin-top:28px;background:var(--navy);color:#fff;padding:22px 0}
+.footer-inner{display:flex;flex-direction:column;gap:10px}
+@media(min-width:768px){.footer-inner{flex-direction:row;justify-content:space-between;align-items:center}}
+.footer-links{font-size:12px;opacity:0.7}
+/* mobile bottom nav */
+.mob-bar{position:fixed;bottom:0;left:0;right:0;z-index:40;background:rgba(255,255,255,0.92);backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;justify-content:space-around;padding:8px 0 10px}
+.mob-bar a{font-size:11px;font-weight:700;color:var(--ink-soft);text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+.mob-bar a.active{color:var(--accent)}
+@media(min-width:768px){.mob-bar{display:none} body{padding-bottom:0}}
+body{padding-bottom:62px}
+@media(min-width:768px){body{padding-bottom:0}}
+/* utility */
+.kbd{background:#f1f5f9;border:1px solid #e2e8f0;border-bottom-width:2px;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <div class="container header-inner">
+    <div class="brand">
+      <div class="brand-pill">XP WEATHER</div>
+      <div class="title">Cyclone Tracker — Super Dynamic</div>
+    </div>
+    <div class="header-meta">MOBILE FIRST • CLEANEST • GORGEOUS<br><span style="color:var(--accent)">Zoom in max → still fits track + wind + cone</span></div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="hero">
+    <div class="hero-grid">
+      <div class="card">
+        <div class="card-pad">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <span class="badge"><span class="badge-dot"></span> LIVE • MODERN • MOBILE-FRIENDLY</span>
+            <span class="mono" style="font-size:11px;color:var(--ink-faint)">DPI 240 • DYNAMIC FIT • NO OVERLAP</span>
+          </div>
+          <h1 style="font-size:28px;margin:0 0 8px">সবথেকে সুন্দর, গোছানো, প্রফেশনাল আউটপুট — দুনিয়ার কোথাও পাবেন না</h1>
+          <p style="color:var(--ink-soft);font-size:14px;margin:0 0 14px">
+            Zoom in সর্বোচ্চ করলেও ট্র্যাক, wind circle radius ও uncertainty cone ম্যাপের সেন্টার অনুযায়ী সুন্দরভাবে ফিট থাকবে। 
+            সব text ও bbox মার্কার ডায়নামিকভাবে সাইজ এডজাস্ট করে — একটার উপরে আরেকটা কখনো যাবে না। মোবাইলে ১০০% ফ্রেন্ডলি, 
+            সব লেখা স্পষ্ট, পরিষ্কার, দৃষ্টিনন্দন।
+          </p>
+          <div class="hero-img-wrap">
+            <img id="mainImage" class="hero-img" src="output/plots/06B_Track.png" alt="Cyclone Track">
+            <div class="zoom-hint">🔍 Pinch to zoom • Pan • Super dynamic fit</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="switchStorm('06B')">06B — Latest</button>
+            <button class="btn" onclick="switchStorm('01B')">01B — Inland</button>
+            <button class="btn" onclick="downloadCurrent()">⬇ Download PNG</button>
+            <button class="btn btn-accent" onclick="fitAll()">🎯 Fit Track + Wind + Cone</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="card card-pad">
+          <h2 style="font-size:16px;margin:0 0 10px">✨ নতুন ফিচার — No হিজিবিজি</h2>
+          <div class="features" style="margin:0">
+            <div class="feat" style="padding:12px">
+              <div class="feat-ic" style="background:#e0f2fe">🎯</div>
+              <h3>Super Dynamic Fit</h3>
+              <p>Track + wind radii + cone থেকে map window solve হয়। weighted center, dynamic padding — zoom in max করলেও সব ফিট।</p>
+            </div>
+            <div class="feat" style="padding:12px">
+              <div class="feat-ic" style="background:#fef3c7">📱</div>
+              <h3>Mobile-First</h3>
+              <p>Phone-first type scale, বড় ফন্ট, বেশি padding, rounded 12px, soft shadow — মোবাইলে fit-to-width এও স্পষ্ট।</p>
+            </div>
+            <div class="feat" style="padding:12px">
+              <div class="feat-ic" style="background:#ffe4e6">🧠</div>
+              <h3>Collision-Free Labels</h3>
+              <p>16 candidates, priority queue, dynamic font shrink — NOW > landfall > forecast > ports, কখনো overlap না।</p>
+            </div>
+            <div class="feat" style="padding:12px">
+              <div class="feat-ic" style="background:#dcfce7">🔍</div>
+              <h3>Dynamic Scaling</h3>
+              <p>Zoom factor থেকে marker, line, text সব scale হয়। zoom out এ ছোট, zoom in এ বড় — সবসময় সুন্দর।</p>
+            </div>
+            <div class="feat" style="padding:12px">
+              <div class="feat-ic" style="background:#ede9fe">🗺️</div>
+              <h3>Gorgeous Basemap</h3>
+              <p>Vector land, double halo, modern sky-100 sea, warm land, crisp borders — razor-sharp at any DPI।</p>
+            </div>
+            <div class="feat" style="padding:12px">
+              <div class="feat-ic" style="background:#ffedd5">💎</div>
+              <h3>Clean & Clear</h3>
+              <p>কোনো হিজিবিজি না, সব গোছানো, extra breathing room, modern cards, সবাই বুঝবে, সবাই পছন্দ করবে।</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card card-pad">
+          <h3 style="margin:0 0 8px;font-size:14px">⚡ Super Dynamic — কিভাবে কাজ করে?</h3>
+          <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--ink-soft);line-height:1.6">
+            <li><b>Wind radius extent:</b> প্রতিটি forecast point এ wind circle + cone radius যোগ করে bounds বের করা হয়</li>
+            <li><b>Weighted center:</b> current 32% + forecast centroid 68% (wind intensity weighted)</li>
+            <li><b>Dynamic padding:</b> span ছোট হলে padding বড় — max zoom এও ring কাটে না</li>
+            <li><b>Zoom factor:</b> <span class="kbd">zf = log(ref/span)</span> → marker, font, line সব scale</li>
+            <li><b>Label placement:</b> 16 position, leader line, white bbox + colored border, shadow</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin:8px 0 18px">
+    <div class="card-pad" style="padding-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <h2 style="margin:0;font-size:18px">🗺️ Interactive Map — Zoom In Max করেও Fit থাকবে</h2>
+        <div style="font-size:12px;color:var(--ink-faint)">Leaflet • Vector • Dynamic fitBounds</div>
+      </div>
+      <p style="margin:6px 0 12px;color:var(--ink-soft);font-size:13px">
+        নিচের ম্যাপে pinch-zoom, drag করুন — <b>Fit Track + Wind + Cone</b> বাটনে ক্লিক করলে সবকিছু সুন্দরভাবে সেন্টারে ফিট হবে, 
+        যেমন PNG তে হয়। Wind circle ও cone সবসময় ভিতরে থাকবে, কখনো কাটবে না।
+      </p>
+      <div class="map-controls">
+        <button class="btn btn-primary" onclick="fitAll()">🎯 Fit All (Track + Wind + Cone)</button>
+        <button class="btn" onclick="fitTrack()">📍 Fit Track Only</button>
+        <button class="btn" onclick="toggleWind()">💨 Toggle Wind Radii</button>
+        <button class="btn" onclick="toggleCone()">🌪️ Toggle Cone</button>
+        <button class="btn" onclick="locateUser()">📱 My Location</button>
+      </div>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <h2 style="font-size:20px;margin:18px 0 10px">📸 Generated Plots — Cleanest Output</h2>
+  <div class="gallery">
+    <div class="g-item" onclick="switchStorm('06B')">
+      <img src="output/plots/06B_Track.png" alt="06B Track" loading="lazy">
+      <div class="g-cap"><h4>06B — Bay of Bengal (Invest)</h4><p>Wind radii • Cone • Landfall near Srikakulam • Super dynamic fit</p></div>
+    </div>
+    <div class="g-item" onclick="switchStorm('01B')">
+      <img src="output/plots/01B_Track.png" alt="01B Track" loading="lazy">
+      <div class="g-cap"><h4>01B — Inland Cyclone</h4><p>Observed + Forecast • No overlap • Mobile-friendly • Gorgeous</p></div>
+    </div>
+  </div>
+
+  <div class="card card-pad" style="margin:18px 0">
+    <h2 style="font-size:16px;margin:0 0 8px">📱 মোবাইল ফ্রেন্ডলি — কিভাবে টেস্ট করবেন</h2>
+    <ol style="margin:0;padding-left:18px;font-size:13px;color:var(--ink-soft);line-height:1.7">
+      <li>মোবাইলে এই পেজ খুলুন — সব image width 100% এ fit হবে, text স্পষ্ট থাকবে</li>
+      <li>Pinch-zoom করুন — PNG তে সব marker ও text ডায়নামিকভাবে adjust হবে</li>
+      <li>Interactive map এ zoom in max করুন — <b>Fit All</b> বাটনে সবসময় track + wind + cone ফিট থাকবে</li>
+      <li>একটার উপরে আরেকটা লেবেল যাবে না — collision solver 16 position চেক করে</li>
+      <li>Download PNG করে WhatsApp / Facebook এ শেয়ার করুন — সবাই পরিষ্কার বুঝবে</li>
+    </ol>
+  </div>
+</div>
+
+<footer>
+  <div class="container footer-inner">
+    <div>
+      <div style="font-weight:800;font-size:14px">© XP WEATHER • Super Dynamic • Gorgeous • Cleanest</div>
+      <div class="footer-links">Modern cyclone tracker • Mobile-first • No clutter • Built with love for Bangladesh</div>
+    </div>
+    <div class="footer-links">Generated: <span id="genTime"></span> • DPI 240 • Theme: modern</div>
+  </div>
+</footer>
+
+<div class="mob-bar">
+  <a href="#" class="active" onclick="window.scrollTo({top:0,behavior:'smooth'});return false"><span>🏠</span>Home</a>
+  <a href="#" onclick="document.getElementById('map').scrollIntoView({behavior:'smooth'});return false"><span>🗺️</span>Map</a>
+  <a href="#" onclick="fitAll();return false"><span>🎯</span>Fit</a>
+  <a href="#" onclick="downloadCurrent();return false"><span>⬇️</span>Download</a>
+</div>
+
+<script>
+let currentStorm='06B';
+let map, obsLayer, forLayer, coneLayer, windLayer, obsPointsLayer, forPointsLayer;
+let windVisible=true, coneVisible=true;
+let allData=[];
+
+function switchStorm(name){
+  currentStorm=name;
+  document.getElementById('mainImage').src=`output/plots/${name}_Track.png`;
+  document.getElementById('mainImage').scrollIntoView({behavior:'smooth',block:'center'});
+  loadStormToMap(name);
+}
+function downloadCurrent(){
+  const a=document.createElement('a');
+  a.href=`output/plots/${currentStorm}_Track.png`;
+  a.download=`${currentStorm}_Track_Modern_Gorgeous.png`;
+  a.click();
+}
+
+async function init(){
+  document.getElementById('genTime').textContent=new Date().toLocaleString();
+  // init leaflet
+  map=L.map('map',{zoomControl:false}).setView([18.5,84.5],6);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap © CARTO', maxZoom:18
+  }).addTo(map);
+
+  try{
+    const res=await fetch('output/web/all.json');
+    allData=await res.json();
+    loadStormToMap(currentStorm);
+  }catch(e){
+    console.error(e);
+    // fallback demo track
+    L.marker([17.5,86.0]).addTo(map).bindPopup("NOW • 30KT");
+  }
+}
+
+function loadStormToMap(name){
+  const data=allData.find(d=>d.name.includes(name) || d.file.includes(name));
+  if(!data) return;
+  // clear
+  if(obsLayer) map.removeLayer(obsLayer);
+  if(forLayer) map.removeLayer(forLayer);
+  if(coneLayer) map.removeLayer(coneLayer);
+  if(windLayer) map.removeLayer(windLayer);
+  if(obsPointsLayer) map.removeLayer(obsPointsLayer);
+  if(forPointsLayer) map.removeLayer(forPointsLayer);
+
+  // obs track
+  if(data.obs_track.geometry.coordinates.length>1){
+    obsLayer=L.geoJSON(data.obs_track,{style:{color:'#334155',weight:3,dashArray:'6,6',opacity:0.9}}).addTo(map);
+  }
+  // forecast track
+  if(data.for_track.geometry.coordinates.length>1){
+    forLayer=L.geoJSON(data.for_track,{style:{color:'#e11d48',weight:4,opacity:0.95}}).addTo(map);
+  }
+  // cone
+  if(data.cone && data.cone.geometry.coordinates[0].length>2){
+    coneLayer=L.geoJSON(data.cone,{style:{color:'#475569',weight:2.5,fillColor:'#94a3b8',fillOpacity:0.18,opacity:0.9}}).addTo(map);
+    if(!coneVisible) map.removeLayer(coneLayer);
+  }
+  // wind radii
+  if(data.wind_radii.features.length>0){
+    windLayer=L.geoJSON(data.wind_radii,{
+      style: f=>({color: f.properties.radius_col==='WindR34'?'#0ea5e9':'#e11d48', weight:2.5, fillOpacity:0.06, opacity:0.85}),
+      onEachFeature:(f,l)=>{l.bindPopup(`${f.properties.radius_col} • ${f.properties.wind}KT • ${f.properties.time}`)}
+    }).addTo(map);
+    if(!windVisible) map.removeLayer(windLayer);
+  }
+  // points
+  const obsIcon = (wind)=>{
+    let c='#22c55e';
+    if(wind>=35) c='#06b6d4'; if(wind>=65) c='#facc15'; if(wind>=84) c='#f59e0b'; if(wind>=97) c='#ea580c'; if(wind>=114) c='#dc2626';
+    return L.divIcon({className:'',html:`<div style="width:14px;height:14px;background:${c};border:2px solid #000;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+  };
+  if(data.obs_points.features.length>0){
+    obsPointsLayer=L.geoJSON(data.obs_points,{
+      pointToLayer:(f,latlng)=>L.marker(latlng,{icon:obsIcon(f.properties.wind)}).bindPopup(`OBS • ${f.properties.wind}KT • ${f.properties.time}`)
+    }).addTo(map);
+  }
+  if(data.for_points.features.length>0){
+    forPointsLayer=L.geoJSON(data.for_points,{
+      pointToLayer:(f,latlng)=>L.marker(latlng,{icon:L.divIcon({className:'',html:`<div style="width:16px;height:16px;background:${(() => {let c='#3b82f6'; let w=f.properties.wind; if(w>=35) c='#06b6d4'; if(w>=65) c='#facc15'; if(w>=84) c='#f59e0b'; if(w>=97) c='#ea580c'; if(w>=114) c='#dc2626'; return c;})()};border:2.2px solid #000;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.35)"></div>`,iconSize:[16,16],iconAnchor:[8,8]})}).bindPopup(`FOR • ${f.properties.wind}KT • ${f.properties.time}`)
+    }).addTo(map);
+  }
+  fitAll();
+}
+
+function getAllBounds(){
+  const layers=[obsLayer,forLayer,coneLayer,windLayer].filter(Boolean);
+  if(layers.length===0) return null;
+  let bounds=null;
+  layers.forEach(l=>{
+    try{
+      const b=l.getBounds();
+      if(b.isValid()){
+        bounds = bounds ? bounds.extend(b) : b;
+      }
+    }catch(e){}
+  });
+  return bounds;
+}
+function fitAll(){
+  const b=getAllBounds();
+  if(b) map.fitBounds(b.pad(0.18),{animate:true,duration:0.8});
+}
+function fitTrack(){
+  const layers=[obsLayer,forLayer].filter(Boolean);
+  let bounds=null;
+  layers.forEach(l=>{
+    const b=l.getBounds(); if(b.isValid()) bounds=bounds?bounds.extend(b):b;
+  });
+  if(bounds) map.fitBounds(bounds.pad(0.22),{animate:true});
+}
+function toggleWind(){
+  windVisible=!windVisible;
+  if(windLayer){
+    if(windVisible) windLayer.addTo(map); else map.removeLayer(windLayer);
+  }
+}
+function toggleCone(){
+  coneVisible=!coneVisible;
+  if(coneLayer){
+    if(coneVisible) coneLayer.addTo(map); else map.removeLayer(coneLayer);
+  }
+}
+function locateUser(){
+  map.locate({setView:true,maxZoom:8});
+  map.on('locationfound', e=>{L.marker(e.latlng).addTo(map).bindPopup("You are here").openPopup()});
+}
+
+init();
+</script>
+</body>
+</html>
