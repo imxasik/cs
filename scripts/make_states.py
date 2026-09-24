@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 import shapefile
 
-REGION = (55.0, 125.0, -25.0, 45.0)  # lon_min, lon_max, lat_min, lat_max
+REGION = (20.0, 130.0, -25.0, 45.0)  # lon_min, lon_max, lat_min, lat_max
 OUT = Path(__file__).resolve().parent.parent / "assets" / "geo" / "states.geojson"
 
 URL = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces.zip"

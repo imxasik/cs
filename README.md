@@ -34,7 +34,7 @@ Why it stays clean, whatever the data:
   never cover a wind ring and a legend can never cover the coast.
 * **Everything is dynamic** — a card, legend section, table column or label
   appears only when the matching datum exists (no forecast → no cone card;
-  no landfall → an "Unknown · no landfall" risk row; 12 forecast steps →
+  a post-landfall track → an **OverLand** status above the forecast table; 12 forecast steps →
   the table thins itself to `forecast_table_max_cols` columns; …).
 * **The map window is solved from what is drawn** — every wind-radius ring
   and the cone fit fully inside the frame, clipped to the basemap
@@ -118,7 +118,7 @@ still load unmodified, in any separator/case/synonym style.
 `[plot]` numbers: `buffer`, `ucr`, `minlat_offset`, `maxlat_offset`,
 `output_dpi`, `approach_radius`, `approach_ports`, `forecast_tz_offset`,
 `forecast_table_max_cols`, `forecast_table_min_fontsize`,
-`wind_radius_pad`, and the map coverage `min_lat/max_lat/min_lon/max_lon`.
+`wind_radius_pad`, and the map coverage `min_lat/max_lat/min_lon/max_lon` (the bundled regional coverage is 20–130°E and 25°S–45°N).
 
 Toggles (1/0): `show_cone`, `show_legend` (MAP KEY card), `show_ports`,
 `show_approach_table` (NEAREST 4 PORTS card),
@@ -179,6 +179,9 @@ Whole hours omit `:00`; nonzero minutes remain visible, e.g. `11:30AM`.
   labels are bold too, with a tightly measured left gutter to avoid clipping.
 - The compact kilometre scale is sized from its labelled distance at the
   map's centre latitude, rather than using a fixed, oversized bar.
+- The base coastline is near-black; short shoreline sections inherit the
+  exact risk colour of their nearby port marker and label (High = magenta,
+  Medium = amber). The extra map legend text is omitted to keep the map clean.
 
 ## Pluggable features (features/)
 

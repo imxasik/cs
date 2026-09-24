@@ -17,7 +17,7 @@ What it does
 1. reads the meta file (npts, south, north, byte-offset, byte-count) and
    the little-endian float32 (lon, lat) pairs it points at,
 2. keeps boundary lines whose bounding box touches the project map area
-   (lon 55..125 E, lat -25..45 N) and clips them to that rectangle,
+   (lon 20..130 E, lat -25..45 N) and clips them to that rectangle,
 3. simplifies radially (0.006 deg) and rounds to 3 decimals,
 4. writes a tiny GeoJSON FeatureCollection of LineStrings that
    cyclone/basemap.py draws as a thin dashed administrative boundary.
@@ -42,7 +42,7 @@ else:
         raise SystemExit("pip install basemap-data first "
                          "(or set BORDERS_DATA_DIR)")
 
-REGION = (55.0, 125.0, -25.0, 45.0)      # lon_min, lon_max, lat_min, lat_max
+REGION = (20.0, 130.0, -25.0, 45.0)      # lon_min, lon_max, lat_min, lat_max
 TOL = 0.006                              # radial simplification, degrees
 OUT = Path(__file__).resolve().parent.parent / "assets" / "geo" / "borders.geojson"
 

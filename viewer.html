@@ -11,6 +11,7 @@
 :root{
   --bg:#f1f5f9; --paper:#ffffff; --ink:#0f172a; --ink-soft:#475569; --ink-faint:#94a3b8;
   --navy:#0f172a; --accent:#e11d48; --accent-soft:#ffe4e6; --sea:#e0f2fe; --land:#fefce8;
+  --risk-high:#d100ff; --risk-medium:#f59e0b; --risk-low:#2563eb; --risk-none:#16a34a;
   --border:#e2e8f0; --radius:16px; --shadow:0 10px 30px rgba(15,23,42,0.08),0 2px 8px rgba(15,23,42,0.06);
   --shadow-lg:0 20px 60px rgba(15,23,42,0.12),0 4px 16px rgba(15,23,42,0.08);
 }
@@ -39,7 +40,10 @@ header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.86);backdr
 .badge{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent);padding:5px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.03em}
 .badge-dot{width:8px;height:8px;background:var(--accent);border-radius:50%;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:0.8}}
-.hero-img{width:100%;height:auto;display:block;border-radius:12px;transition:transform 0.4s}
+.hero-img{width:100%;height:auto;display:block;border-radius:12px;transition:transform 0.4s;image-rendering:auto}
+.hero-img:focus{outline:3px solid var(--accent);outline-offset:3px}
+.status-note{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;background:#f3e8ff;color:#6d28d9;font-size:12px;font-weight:800}
+.status-note::before{content:"";width:8px;height:8px;border-radius:50%;background:#7c3aed;box-shadow:0 0 0 3px #e9d5ff}
 .hero-img-wrap{position:relative;overflow:hidden;border-radius:12px;background:#fff}
 .hero-img-wrap:hover .hero-img{transform:scale(1.015)}
 .zoom-hint{position:absolute;bottom:10px;right:10px;background:rgba(15,23,42,0.88);color:#fff;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px}
@@ -92,9 +96,9 @@ body{padding-bottom:62px}
   <div class="container header-inner">
     <div class="brand">
       <div class="brand-pill">XP WEATHER</div>
-      <div class="title">Cyclone Tracker — Super Dynamic</div>
+      <div class="title">Cyclone Tracker — Clear, Risk-Aware</div>
     </div>
-    <div class="header-meta">MOBILE FIRST • CLEANEST • GORGEOUS<br><span style="color:var(--accent)">Zoom in max → still fits track + wind + cone</span></div>
+    <div class="header-meta">MOBILE FIRST • CLEAR • RISK AWARE<br><span style="color:var(--accent)">Black coast • Magenta high risk • OverLand status</span></div>
   </div>
 </header>
 
@@ -104,14 +108,13 @@ body{padding-bottom:62px}
       <div class="card">
         <div class="card-pad">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <span class="badge"><span class="badge-dot"></span> LIVE • MODERN • MOBILE-FRIENDLY</span>
-            <span class="mono" style="font-size:11px;color:var(--ink-faint)">DPI 240 • DYNAMIC FIT • NO OVERLAP</span>
+            <span class="badge"><span class="badge-dot"></span> LIVE • CLEAR • MOBILE-FRIENDLY</span>
+            <span class="status-note">OverLand ready</span>
           </div>
-          <h1 style="font-size:28px;margin:0 0 8px">সবথেকে সুন্দর, গোছানো, প্রফেশনাল আউটপুট — দুনিয়ার কোথাও পাবেন না</h1>
+          <h1 style="font-size:28px;margin:0 0 8px">গোছানো, পরিষ্কার ও ঝুঁকি-সচেতন সাইক্লোন আউটপুট</h1>
           <p style="color:var(--ink-soft);font-size:14px;margin:0 0 14px">
-            Zoom in সর্বোচ্চ করলেও ট্র্যাক, wind circle radius ও uncertainty cone ম্যাপের সেন্টার অনুযায়ী সুন্দরভাবে ফিট থাকবে। 
-            সব text ও bbox মার্কার ডায়নামিকভাবে সাইজ এডজাস্ট করে — একটার উপরে আরেকটা কখনো যাবে না। মোবাইলে ১০০% ফ্রেন্ডলি, 
-            সব লেখা স্পষ্ট, পরিষ্কার, দৃষ্টিনন্দন।
+            Black coastline, risk অনুযায়ী রঙিন coastal section, আলাদা magenta High Risk marker এবং পরিষ্কার OverLand status—সবকিছু এক নজরে বোঝা যায়।
+            Grid, labels, forecast table ও summary mobile screen-এও স্পষ্ট থাকে।
           </p>
           <div class="hero-img-wrap">
             <img id="mainImage" class="hero-img" src="output/plots/06B_Track.png" alt="Cyclone Track">
@@ -153,7 +156,7 @@ body{padding-bottom:62px}
             <div class="feat" style="padding:12px">
               <div class="feat-ic" style="background:#ede9fe">🗺️</div>
               <h3>Gorgeous Basemap</h3>
-              <p>Vector land, double halo, modern sky-100 sea, warm land, crisp borders — razor-sharp at any DPI।</p>
+              <p>Black coastline, visible grid, restrained borders and risk-coloured coastal sections—clear at every zoom and DPI।</p>
             </div>
             <div class="feat" style="padding:12px">
               <div class="feat-ic" style="background:#ffedd5">💎</div>
@@ -261,9 +264,18 @@ function downloadCurrent(){
 async function init(){
   document.getElementById('genTime').textContent=new Date().toLocaleString();
   // init leaflet
-  map=L.map('map',{zoomControl:false}).setView([18.5,84.5],6);
+  const regionBounds=L.latLngBounds([[-25,20],[45,130]]);
+  map=L.map('map',{
+    zoomControl:false,
+    minZoom:3,
+    maxBounds:regionBounds,
+    maxBoundsViscosity:0.72,
+    preferCanvas:true
+  }).setView([18.5,84.5],6);
   L.control.zoom({position:'bottomright'}).addTo(map);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+  // The report already carries the labels we need; a no-label basemap keeps
+  // the interactive view focused on the track, coast and risk markers.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap © CARTO', maxZoom:18
   }).addTo(map);
 
