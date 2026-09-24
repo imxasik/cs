@@ -40,13 +40,17 @@ BOOL_DEFAULTS = {
     "wind_radius_extent": True,   # size the map window from the wind-radius rings
     "show_grid": True,            # map graticule (lat/lon grid lines)
     "show_scale_bar": True,       # kilometre scale bar inside the map
+    "show_landfall": True,      # estimate + mark where the track hits the coast
+    "show_landfall_label": False, # Landfall text box on map (Default: False / 0)
+    "show_states": True,  # State / Province border দেখানোর জন্য
+    "show_state_labels": True,  # State / Province নাম দেখানোর জন্য (নতুন)
+    
 }
 
 # Default strings under [style]
 STYLE_DEFAULTS = {
     "theme": "official",                # design tokens: cyclone/theme.py
-    "brand_name": "XP WEATHER",         # fallback when no logo is supplied
-    "brand_logo": "",                   # PNG/JPG path, relative to the repo root
+    "brand_name": "XP WEATHER",         # header brand chip (left corner)
     "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
     "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
     "forecast_time_label": "TIME (BST)",   # first cell of the forecast table
@@ -149,7 +153,6 @@ SHOW_SCALE_BAR = _BOOLS["show_scale_bar"]
 
 THEME = _STYLE["theme"]
 BRAND_NAME = _STYLE["brand_name"]
-BRAND_LOGO = _STYLE["brand_logo"].strip()
 DATE_FORMAT = _STYLE["date_format"]
 FOOTER_TEXT = _STYLE["footer_text"]
 FORECAST_TIME_LABEL = _STYLE["forecast_time_label"]
@@ -157,6 +160,11 @@ FORECAST_SPEED_LABEL = _STYLE["forecast_speed_label"]
 FORECAST_SPEED_UNIT = _STYLE["forecast_speed_unit"]
 FORECAST_SPEED_MODE = _STYLE["forecast_speed_mode"].strip().lower()
 OUTPUT_NAME = _STYLE["output_name"]
+SHOW_LANDFALL = _BOOLS["show_landfall"]
+SHOW_LANDFALL_LABEL = _BOOLS["show_landfall_label"]  # <- এই লাইনটি যোগ করুন
+SHOW_STATES = _BOOLS["show_states"]
+SHOW_STATE_LABELS = _BOOLS["show_state_labels"]
+
 
 
 def output_stem(cyclone_name, override=None):

@@ -44,8 +44,7 @@ from pathlib import Path
 import pandas as pd
 
 _OBS_COLS = ["tnd", "Latitude", "Longitude", "Intensity", "Pressure"]
-_FOR_COLS = ["tnd", "Latitude", "Longitude", "Intensity",
-             "WindR24", "WindR34", "WindR64"]
+_FOR_COLS = ["tnd", "Latitude", "Longitude", "Intensity", "WindR34", "WindR64"]
 
 # header synonym -> canonical column
 _SYNONYMS = {
@@ -56,8 +55,6 @@ _SYNONYMS = {
     "Intensity": ("intensity", "wind", "wind kt", "kt", "kts", "max wind",
                   "maxwind", "vmax", "wind speed", "windspeed"),
     "Pressure": ("pressure", "pres", "mslp", "hpa", "p", "slp"),
-    "WindR24": ("windr24", "r24", "rad24", "radius 24", "wind radius 24",
-                "windradius24"),
     "WindR34": ("windr34", "r34", "rad34", "radius 34", "wind radius 34",
                 "windradius34"),
     "WindR64": ("windr64", "r64", "rad64", "radius 64", "wind radius 64",
@@ -72,7 +69,6 @@ _GLUE = (
     (r"obs\s+time", "obstime"),
     (r"max\s+wind", "maxwind"),
     (r"wind\s+speed", "windspeed"),
-    (r"wind\s+radius\s*24", "windradius24"),
     (r"wind\s+radius\s*34", "windradius34"),
     (r"wind\s+radius\s*64", "windradius64"),
 )
@@ -201,7 +197,7 @@ def _parse_rows(lines, is_forecast):
     df["Longitude"] = df["Longitude"].map(_clean_number)
     df["Intensity"] = df["Intensity"].map(_clean_number).fillna(0.0)
     df["Pressure"] = df["Pressure"].map(_clean_number)
-    for col in ("WindR24", "WindR34", "WindR64"):
+    for col in ("WindR34", "WindR64"):
         df[col] = df[col].map(_clean_number).fillna(0.0)
     return df.reset_index(drop=True)
 

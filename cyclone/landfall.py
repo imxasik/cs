@@ -335,8 +335,8 @@ PORT_RISK_BANDS = (
     {
         "key": "high",
         "label": "HIGH RISK",
-        "legend": "<100 km",
-        "color": "#e60000",       # red
+        "legend": "0–100 km",
+        "color": "#ff00ff",       # Magenta (0-100 km)
         "min_km": 0.0,
         "max_km": 100.0,
     },
@@ -344,31 +344,31 @@ PORT_RISK_BANDS = (
         "key": "medium",
         "label": "MEDIUM RISK",
         "legend": "100–300 km",
-        "color": "#ff9500",       # orange
+        "color": "#e60000",       # Red (100-300 km)
         "min_km": 100.0,
         "max_km": 300.0,
     },
     {
         "key": "low",
         "label": "LOW RISK",
-        "legend": ">300 km",
-        "color": "#22b957",       # green
+        "legend": "300–500 km",
+        "color": "#ff9500",       # Orange (300-500 km)
         "min_km": 300.0,
+        "max_km": 500.0,
+    },
+    {
+        "key": "norisk",
+        "label": "NO RISK",
+        "legend": ">500 km",
+        "color": "#22b957",       # Green (>500 km)
+        "min_km": 500.0,
         "max_km": float("inf"),
     },
 )
 
 
 def classify_port_risk(distance_km):
-    """Return the display band for a port's distance from landfall.
-
-    Distances are in kilometres.  Exactly 100 km is in the orange band and
-    exactly 300 km is in the orange band; only distances strictly below 100 km
-    are red, as requested for the high-risk cutoff.
-
-    ``None``/non-finite distances are returned as an explicit unknown band so
-    a map can never silently show a port as safe when no landfall exists.
-    """
+    """Return the display band for a port's distance from landfall."""
     try:
         distance = float(distance_km)
     except (TypeError, ValueError):
@@ -383,23 +383,18 @@ def classify_port_risk(distance_km):
             "distance_km": None,
         }
 
-    # Negative values are not meaningful, but clamping makes this helper safe
-    # for callers that work with rounded/projected geometry.
     distance = max(0.0, distance)
-    for band in PORT_RISK_BANDS:
-        if band["key"] == "high":
-            matches = distance < band["max_km"]
-        elif band["key"] == "medium":
-            matches = distance <= band["max_km"]
-        else:
-            matches = distance > band["min_km"]
-        if matches:
-            result = dict(band)
-            result["distance_km"] = distance
-            return result
+    
+    if distance <= 100.0:
+        band = PORT_RISK_BANDS[0]  # High Risk (Magenta)
+    elif distance <= 300.0:
+        band = PORT_RISK_BANDS[1]  # Medium Risk (Red)
+    elif distance <= 500.0:
+        band = PORT_RISK_BANDS[2]  # Low Risk (Orange)
+    else:
+        band = PORT_RISK_BANDS[3]  # No Risk (Green)
 
-    # The final band has an infinite upper bound, so this is defensive only.
-    result = dict(PORT_RISK_BANDS[-1])
+    result = dict(band)
     result["distance_km"] = distance
     return result
 

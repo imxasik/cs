@@ -72,7 +72,7 @@ def draw_land(ax, theme, bounds, geojson_path):
         # land fill + thin coast stroke
         ax.add_patch(PathPatch(
             path, transform=ax.transData, facecolor=theme["land"],
-            edgecolor=theme["coast"], linewidth=0.7, alpha=1.0,
+            edgecolor=theme["coast"], linewidth=2.0, alpha=1.0,
             zorder=0.5, clip_on=True, joinstyle="round"))
         drawn += 1
     return drawn
@@ -121,6 +121,67 @@ def draw_borders(ax, theme, bounds, geojson_path):
         return 0
     ax.add_collection(LineCollection(
         segs, colors=theme["border"], linewidths=0.85,
-        linestyles=(0, (3.2, 2.2)), alpha=0.9, zorder=0.8,
+        linestyles=(0, (3.2, 2.2)), alpha=0.9, zorder=2.0,
         capstyle="round", joinstyle="round"))
     return len(segs)
+    
+    
+    # ---------------------------------------------------------------------------
+# State / Province Boundaries (Admin-1)
+# ---------------------------------------------------------------------------
+@lru_cache(maxsize=4)
+def load_states(geojson_path):
+    """((Nx2 line arrays), (bbox tuples)) for every state boundary, cached."""
+    lines, boxes = [], []
+    try:
+        with open(geojson_path) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return (), ()
+    for feat in data.get("features", ()):
+        geom = feat.get("geometry") or {}
+        gtype = geom.get("type")
+        
+        # LineString এবং MultiLineString দুইটাই হ্যান্ডেল করার জন্য
+        if gtype == "LineString":
+            coords_list = [geom.get("coordinates") or []]
+        elif gtype == "MultiLineString":
+            coords_list = geom.get("coordinates") or []
+        else:
+            continue
+
+        for coords in coords_list:
+            if len(coords) < 2:
+                continue
+            line = np.asarray(coords, dtype=float)
+            lines.append(line)
+            boxes.append((line[:, 0].min(), line[:, 0].max(),
+                          line[:, 1].min(), line[:, 1].max()))
+    return tuple(lines), tuple(boxes)
+
+
+def draw_states(ax, theme, bounds, geojson_path):
+    """
+    State/Province boundaries for the window bounds.
+    Drawn as a single LineCollection for high efficiency.
+    """
+    lines, boxes = load_states(geojson_path)
+    if not lines:
+        return 0
+    lon_min, lon_max, lat_min, lat_max = bounds
+    segs = [ln for ln, (w, e, s, n) in zip(lines, boxes)
+            if not (e < lon_min or w > lon_max or n < lat_min or s > lat_max)]
+    if not segs:
+        return 0
+
+    # theme.py থেকে ডিফাইন করা কালার, উইডথ ও স্টাইল ব্যবহার
+    color = theme.get("state_border", "#a39cae")
+    lw = theme.get("state_width", 0.4)
+    ls = theme.get("state_style", ":")
+
+    ax.add_collection(LineCollection(
+        segs, colors=color, linewidths=lw,
+        linestyles=ls, alpha=0.85, zorder=1.9,
+        capstyle="round", joinstyle="round"))
+    return len(segs)
+

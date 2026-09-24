@@ -27,8 +27,8 @@ INTENSITY_SCALE = (
     (84,  "cat2", "Category 2", "#f59e0b"),
     (65,  "cat1", "Category 1", "#fde047"),
     (35,  "ts",   "Cyclonic Storm", "#22d3ee"),
-    (24,  "td",   "Tropical Depression", "#3b82f6"),
-    (0,   "low",  "Invest Area / Low", "#4ade80"),
+    (24,  "td",   "Depression", "#3b82f6"),
+    (0,   "low",  "Invest Area", "#4ade80"),
 )
 
 # Display order for the map key: weakest -> strongest
@@ -38,16 +38,16 @@ INTENSITY_LEGEND_ORDER = tuple(reversed(INTENSITY_SCALE))
 # Wind-radius rings (forecast isotachs), smallest radius first.
 WIND_RADII = (
     # (column,   legend label, colour)
-    ("WindR24", "24 KT Wind", "#0284c7"),
-    ("WindR34", "34 KT Wind", "#ea580c"),
+    ("WindR34", "34 KT Wind", "#0284c7"),
     ("WindR64", "64 KT Wind", "#be123c"),
 )
 
 # Port-risk bands, keyed exactly like cyclone.landfall.PORT_RISK_BANDS keys.
 PORT_RISK = {
-    "high":    "#dc2626",
-    "medium":  "#f59e0b",
-    "low":     "#16a34a",
+    "high":    "#ff00ff",
+    "medium":  "#dc2626",
+    "low":     "#f59e0b",
+    "norisk": "#16a34a",
     "unknown": "#94a3b8",
 }
 
@@ -81,6 +81,9 @@ OFFICIAL = {
     "coast":       "#87a0b4",   # coastline stroke
     "coast_halo":  "#b7d3e6",   # shallow-water glow around the coast
     "border":      "#8f889c",   # country boundary (thin dashed)
+    "state_border": "#a39cae",  # state boundary color (কান্ট্রি বর্ডারের থেকে কিছুটা হালকা)
+    "state_width":  0.8,        # state border line width
+    "state_style":  ":",        # state line style (dotted)
 
     # ---- map graphics -----------------------------------------------------
     "obs_track":   "#33475c",   # observed track line
@@ -94,18 +97,18 @@ OFFICIAL = {
     # drawn big enough to stay legible at that scale.
     "fs_title":    23.0,
     "fs_subtitle": 12.0,
-    "fs_card_title": 12.0,
+    "fs_card_title": 11.5,
     "fs_body":     11.4,
     "fs_small":    10.0,
     "fs_tiny":     9.0,
     "fs_table":    12.2,
     "fs_chip":     12.6,
     "fs_footer":   11.4,
-    "fs_tick":     12.0,
+    "fs_tick":     11.6,
 
     # ---- metrics (points) --------------------------------------------------
-    "card_pad":    9.0,         # inner padding of a card
-    "card_gap":    9.0,         # gap between stacked cards (section spacing)
+    "card_pad":    11.0,        # inner padding of a card
+    "card_gap":    13.5,        # gap between stacked cards (section spacing)
     "card_radius": 7.0,         # corner radius
     "row_h":       17.0,        # legend / table row height
     "line_card":   1.35,
