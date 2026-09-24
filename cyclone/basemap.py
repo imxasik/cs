@@ -17,6 +17,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.path import Path as MplPath
 from matplotlib.patches import PathPatch
 
+from .theme import dynamic_linewidth
+
 
 @lru_cache(maxsize=8)
 def load_land(geojson_path):
@@ -50,8 +52,10 @@ def draw_land(ax, theme, bounds, geojson_path, zf=1.0):
     lon_min, lon_max, lat_min, lat_max = bounds
     drawn = 0
     # dynamic line widths
-    halo_lw = 2.8 + 0.6 * zf
-    coast_lw = 2.0 + 0.4 * zf
+    # A fine black primary coast stays crisp without turning dense delta
+    # islands into a heavy dotted band at high DPI.
+    halo_lw = 1.8 + 0.35 * zf
+    coast_lw = 1.15 + 0.20 * zf
     for ring, (w, e, s, n) in zip(rings, boxes):
         if e < lon_min or w > lon_max or n < lat_min or s > lat_max:
             continue
@@ -70,6 +74,89 @@ def draw_land(ax, theme, bounds, geojson_path, zf=1.0):
             path, transform=ax.transData, facecolor=theme["land"],
             edgecolor=theme["coast"], linewidth=coast_lw, alpha=1.0,
             zorder=0.55, clip_on=True, joinstyle="round", capstyle="round"))
+        drawn += 1
+    return drawn
+
+
+def _project_to_segment_km(point, a, b):
+    """Return local-km distance and t for a lon/lat segment projection."""
+    lat0 = np.radians((point[1] + a[1] + b[1]) / 3.0)
+    sx, sy = 111.320 * np.cos(lat0), 110.574
+    p = np.array([point[0] * sx, point[1] * sy])
+    aa = np.array([a[0] * sx, a[1] * sy])
+    bb = np.array([b[0] * sx, b[1] * sy])
+    vec = bb - aa
+    denom = float(np.dot(vec, vec))
+    t = 0.0 if denom == 0 else float(np.dot(p - aa, vec) / denom)
+    t = max(0.0, min(1.0, t))
+    nearest = aa + t * vec
+    return float(np.linalg.norm(p - nearest)), t
+
+
+def draw_risk_coastline(ax, theme, bounds, geojson_path, ports, zf=1.0):
+    """Highlight short coastline sections using the matching port-risk colour.
+
+    The full coastline remains a crisp near-black reference.  Around each
+    visible port, a restrained segment is overlaid with the same colour used
+    by its marker and label.  This makes the risk relationship legible
+    without turning an entire country shoreline into a loud colour band.
+    """
+    rings, boxes = load_land(geojson_path)
+    if not rings or not ports:
+        return 0
+    lon_min, lon_max, lat_min, lat_max = bounds
+    # Keep sections short and proportional to risk importance.
+    half_km = {"high": 82.0, "medium": 62.0, "low": 44.0,
+               "norisk": 30.0, "unknown": 24.0}
+    drawn = 0
+    for _name, plat, plon, risk in ports:
+        if not (lon_min <= plon <= lon_max and lat_min <= plat <= lat_max):
+            continue
+        best = None
+        for ring, (west, east, south, north) in zip(rings, boxes):
+            if east < plon - 3.0 or west > plon + 3.0 or north < plat - 3.0 or south > plat + 3.0:
+                continue
+            for idx in range(len(ring) - 1):
+                a, b = ring[idx], ring[idx + 1]
+                distance, fraction = _project_to_segment_km((plon, plat), a, b)
+                if best is None or distance < best[0]:
+                    best = (distance, ring, idx, fraction)
+        if best is None:
+            continue
+        _distance, ring, index, _fraction = best
+        # A port can be a little inland/offshore; still colour its nearest
+        # coast if it is within a sensible coastal association distance.
+        if _distance > 90.0:
+            continue
+        colour = risk.get("color", theme["coast"])
+        reach = half_km.get(risk.get("key", "unknown"), 24.0)
+        start, end = index, index + 1
+        distance = 0.0
+        while start > 0 and distance < reach:
+            a, b = ring[start - 1], ring[start]
+            lat0 = np.radians((a[1] + b[1]) / 2.0)
+            distance += float(np.hypot((b[0] - a[0]) * 111.320 * np.cos(lat0),
+                                       (b[1] - a[1]) * 110.574))
+            start -= 1
+        distance = 0.0
+        while end < len(ring) - 1 and distance < reach:
+            a, b = ring[end], ring[end + 1]
+            lat0 = np.radians((a[1] + b[1]) / 2.0)
+            distance += float(np.hypot((b[0] - a[0]) * 111.320 * np.cos(lat0),
+                                       (b[1] - a[1]) * 110.574))
+            end += 1
+        segment = ring[start:end + 1]
+        if len(segment) < 2:
+            continue
+        line_width = dynamic_linewidth(3.0, zf)
+        # White keyline separates risk colour from the black coast and the
+        # warm land fill at every DPI.
+        ax.plot(segment[:, 0], segment[:, 1], color="#ffffff",
+                linewidth=line_width + 2.2, alpha=0.92, zorder=2.55,
+                solid_capstyle="round", solid_joinstyle="round", clip_on=True)
+        ax.plot(segment[:, 0], segment[:, 1], color=colour,
+                linewidth=line_width, alpha=0.98, zorder=2.6,
+                solid_capstyle="round", solid_joinstyle="round", clip_on=True)
         drawn += 1
     return drawn
 

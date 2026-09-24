@@ -62,6 +62,69 @@ FIG_W_IN, FIG_H_IN = 14.8, 13.2  # taller for mobile, more breathing room
 # ---------------------------------------------------------------------------
 _TEXT_SAFETY = 1.07
 
+
+def _format_issue_times(timestamp, offset_hours):
+    """Return the two compact issue-time lines used in the header.
+
+    Track timestamps are UTC in the input files.  Keeping this formatter in
+    one place prevents the header and tests/exports from drifting apart when
+    the local offset crosses midnight or includes half-hours.
+    """
+    if timestamp is None or pd.isna(timestamp):
+        return "ISSUED --", "LOCAL --"
+    ts = pd.Timestamp(timestamp)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    try:
+        offset = float(offset_hours)
+    except (TypeError, ValueError):
+        offset = 0.0
+    local = ts + pd.Timedelta(hours=offset)
+    sign = "+" if offset >= 0 else "-"
+    magnitude = abs(offset)
+    offset_text = f"{magnitude:g}"
+    hr = local.strftime("%I").lstrip("0") or "0"
+    minute = local.strftime("%M")
+    clock = f"{hr}:{minute}" if minute != "00" else hr
+    local_line = f"LOCAL {clock}{local:%p}, {local:%d %b %Y} ({sign}{offset_text}H)"
+    issued_line = f"ISSUED {ts:%HZ, %d %b %Y} UTC"
+    return issued_line.upper(), local_line.upper()
+
+
+def _coordinate_label(value, latitude=True):
+    """Format a signed coordinate without clipping-prone minus signs."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "--"
+    suffix = ("N" if number >= 0 else "S") if latitude else ("E" if number >= 0 else "W")
+    magnitude = abs(number)
+    shown = f"{magnitude:g}"
+    return f"{shown}\N{DEGREE SIGN}{suffix}"
+
+
+def _wrap_key_label(text, max_width_pt, fontsize):
+    """Keep a risk label and its distance/unit phrase together when wrapping."""
+    text = str(text)
+    if _text_width_pt(text, fontsize) <= max_width_pt:
+        return [text]
+    if " · " in text:
+        left, right = text.split(" · ", 1)
+        if _text_width_pt(right, fontsize) <= max_width_pt:
+            return [left, right]
+    words, lines, current = text.split(), [], ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if current and _text_width_pt(candidate, fontsize) > max_width_pt:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
 def _text_width_pt(text, fontsize, weight="normal"):
     text = str(text)
     try:
@@ -360,21 +423,64 @@ def _overlap(a, b, gap=4.0):
 # ---------------------------------------------------------------------------
 # Zone painters — modern, gorgeous, mobile-first
 # ---------------------------------------------------------------------------
+def _logo_path(path):
+    """Resolve a logo relative to the project root, never the shell cwd."""
+    if not path:
+        return None
+    candidate = Path(str(path)).expanduser()
+    if candidate.is_absolute() and candidate.exists():
+        return candidate
+    project_candidate = ASSETS_DIR.parent / candidate
+    if project_candidate.exists():
+        return project_candidate
+    asset_candidate = ASSETS_DIR / candidate
+    if asset_candidate.exists():
+        return asset_candidate
+    return None
+
+
 def _draw_header(ax, T, *, name, is_invest, obs_span, for_span, issued,
-                 issued_sub, brand, zf=1.0):
+                 issued_sub, brand, logo_path=None, zf=1.0):
+    """Paint the header and fit an optional brand logo without distortion."""
     ax.axis("off")
     aw, ah = _ax_pt(ax)
 
-    # Brand chip — modern pill with larger radius
+    # Brand mark — use the supplied image when it is readable; otherwise
+    # retain the compact text pill.  The image extent is calculated in
+    # physical points so a wide or square logo keeps its original ratio.
     fs_b = dynamic_font(T["fs_small"] + 0.8, zf, 9, 14)
-    bw = _text_width_pt(brand, fs_b, "bold") + 22
     bh = 18.0
     y_c = 0.60
-    add_rrect(ax, 0.0, y_c - bh/2/ah, bw/aw, y_c + bh/2/ah,
-              8.0, fc=T["navy"], ec="none", z=2, T=T, shadow=True)
-    ax.text(bw/2/aw, y_c, brand, transform=ax.transAxes, fontsize=fs_b,
-            fontweight="bold", color=T["on_dark"], ha="center", va="center",
-            zorder=3)
+    logo = _logo_path(logo_path)
+    logo_drawn = False
+    if logo is None and logo_path:
+        print(f"[WARN] Could not read brand logo '{logo_path}'. Using the brand name instead.")
+    if logo is not None:
+        try:
+            image = plt.imread(str(logo))
+            if image.ndim >= 2 and image.shape[0] and image.shape[1]:
+                ratio = float(image.shape[1]) / float(image.shape[0])
+                max_h_pt, max_w_axes = 42.0, 0.18
+                h_axes = min(max_h_pt / ah, max_w_axes * aw / (ratio * ah))
+                w_axes = h_axes * ratio * ah / aw
+                image_artist = ax.imshow(
+                    image, extent=(0.0, w_axes, y_c - h_axes / 2,
+                                   y_c + h_axes / 2),
+                    transform=ax.transAxes, aspect="auto", interpolation="antialiased",
+                    zorder=3, clip_on=False)
+                image_artist.set_gid("brand-logo")
+                logo_drawn = True
+        except Exception as exc:
+            # Pillow/matplotlib can raise SyntaxError for a corrupt PNG,
+            # alongside OSError for a missing/locked file.
+            print(f"[WARN] Could not read brand logo '{logo}': {exc}. Using the brand name instead.")
+    if not logo_drawn:
+        bw = _text_width_pt(brand, fs_b, "bold") + 22
+        add_rrect(ax, 0.0, y_c - bh/2/ah, bw/aw, y_c + bh/2/ah,
+                  8.0, fc=T["navy"], ec="none", z=2, T=T, shadow=True)
+        ax.text(bw/2/aw, y_c, brand, transform=ax.transAxes, fontsize=fs_b,
+                fontweight="bold", color=T["on_dark"], ha="center", va="center",
+                zorder=3)
 
     # Issued card — modern with double shadow, larger
     fs_i = dynamic_font(T["fs_small"] + 0.6, zf, 9, 13)
@@ -480,6 +586,10 @@ def _swatch(ax, x_c, y_c, kind, colour, fs, T, z=4, zf=1.0):
                 transform=ax.transAxes, markerfacecolor=colour,
                 markeredgecolor="#78350f", markeredgewidth=0.7,
                 linestyle="none", zorder=z, clip_on=False)
+    elif kind == "status":
+        # Small, high-contrast status dot used for OverLand above the table.
+        _dot_patch(ax, x_c, y_c, fs * 0.42, fc=colour, ec="#ffffff",
+                   lw=0.9, z=z, alpha=0.96)
 
 _KEY_SEC_GAP = 1.10
 _KEY_TITLE = 1.15
@@ -511,10 +621,11 @@ def _draw_key_card(ax, x0, x1, y1, rows, fs, T, zf=1.0):
               ec=T["card_edge"], lw=T["line_card"], z=2, shadow=True, T=T)
     pad = T["card_pad"] / aw
     ty = y1 - (T["card_pad"] + fs * 1.0) / ah
+    key_title_fs = max(fs * 1.12, 12.0)
     ax.text(x0 + pad, ty, "MAP KEY", transform=ax.transAxes,
-            fontsize=fs * 1.12, fontweight="black", color=T["ink"], ha="left",
+            fontsize=key_title_fs, fontweight="black", color=T["ink"], ha="left",
             va="center", zorder=4)
-    tw = _text_width_pt("MAP KEY", fs * 1.12, "bold") / aw
+    tw = _text_width_pt("MAP KEY", key_title_fs, "bold") / aw
     ax.plot([x0 + pad, x0 + pad + tw], [ty - fs * 1.05 / ah] * 2,
             transform=ax.transAxes, color=T["accent"], lw=2.4, zorder=4,
             clip_on=False, solid_capstyle="round")
@@ -541,22 +652,24 @@ def _draw_key_card(ax, x0, x1, y1, rows, fs, T, zf=1.0):
                 cx = x0 + pad + (k % 2) * col_w
                 cy = y - fs * 1.0 / ah
                 _kind, colour, label = row[1], row[2], row[3]
-                _swatch(ax, cx + gut / 2, cy, _kind, colour, fs * 1.02, T, zf=zf)
-                label = _fit_text(label, col_w * aw - gut - 10, fs * 1.08)
+                item_fs = max(min(fs * 0.98, 12.0), 11.0)
+                _swatch(ax, cx + gut / 2, cy, _kind, colour, item_fs * 1.02, T, zf=zf)
+                label = _fit_text(label, col_w * aw - gut - 10, item_fs * 1.08)
                 ax.text(cx + gut + 4 / aw, cy, label,
-                        transform=ax.transAxes, fontsize=fs * 0.98,
-                        color=T["ink_soft"], ha="left", va="center", zorder=4,
+                        transform=ax.transAxes, fontsize=item_fs,
+                        color=T["ink"], ha="left", va="center", zorder=4,
                         fontweight="500")
                 if k % 2 == 1 or k == len(items) - 1:
                     y -= fs * _KEY_ITEM / ah
         else:
             cy = y - fs * 1.0 / ah
             _kind, colour, label = rows[i][1], rows[i][2], rows[i][3]
-            _swatch(ax, x0 + pad + gut / 2, cy, _kind, colour, fs * 1.02, T, zf=zf)
-            label = _fit_text(label, inner * aw - gut - 10, fs * 0.98)
+            item_fs = max(min(fs * 0.98, 12.0), 11.0)
+            _swatch(ax, x0 + pad + gut / 2, cy, _kind, colour, item_fs * 1.02, T, zf=zf)
+            label = _fit_text(label, inner * aw - gut - 10, item_fs * 0.98)
             ax.text(x0 + pad + gut + 4 / aw, cy, label,
-                    transform=ax.transAxes, fontsize=fs * 0.98,
-                    color=T["ink_soft"], ha="left", va="center", zorder=4)
+                    transform=ax.transAxes, fontsize=item_fs,
+                    color=T["ink"], ha="left", va="center", zorder=4)
             y -= fs * _KEY_ITEM / ah
             i += 1
     return y0
@@ -591,8 +704,11 @@ def _draw_glance_card(ax, x0, x1, y1, stats, fs, T, zf=1.0):
 
     r_top = top + fs * 0.40 / ah
     r_bot = top - (rows - 1) * fs * _GLANCE_ROW / ah - fs * 2.4 / ah
+    # Strong enough to read on a phone/PNG export, but still lighter than
+    # the card edge so the values remain the visual focus.
+    summary_line = T.get("summary_line", T["card_edge"])
     ax.plot([mid_x, mid_x], [r_bot, r_top], transform=ax.transAxes,
-            color=T["card_edge_soft"], lw=1.1, zorder=3.6, clip_on=False, alpha=0.8)
+            color=summary_line, lw=1.35, zorder=3.6, clip_on=False, alpha=0.95)
 
     for i, (label, value, sub, colour) in enumerate(stats):
         col = i % 2
@@ -601,18 +717,18 @@ def _draw_glance_card(ax, x0, x1, y1, stats, fs, T, zf=1.0):
         ax.text(cx, cy, label, transform=ax.transAxes,
                 fontsize=fs * 0.86, fontweight="bold", color=T["ink_soft"],
                 ha="left", va="center", zorder=4, alpha=0.9)
-        ax.text(cx, cy - fs * 1.30 / ah, value, transform=ax.transAxes,
+        ax.text(cx, cy - fs * 1.25 / ah, value, transform=ax.transAxes,
                 fontsize=fs * _GLANCE_VAL, fontweight="black", color=colour,
                 ha="left", va="center", zorder=4)
         if sub:
-            ax.text(cx, cy - fs * 2.30 / ah, sub, transform=ax.transAxes,
+            ax.text(cx, cy - fs * 2.45 / ah, sub, transform=ax.transAxes,
                     fontsize=fs * 0.70, color=T["ink_faint"], ha="left", va="center", zorder=4)
 
         if col == 0 and (i // 2) < rows - 1:
-            ry = cy - fs * 2.45 / ah
+            ry = cy - fs * 2.90 / ah
             ax.plot([x0 + pad, x1 - pad], [ry, ry], transform=ax.transAxes,
-                    color=T["card_edge_soft"], lw=1.0, zorder=3.6,
-                    clip_on=False, alpha=0.7)
+                    color=summary_line, lw=1.25, zorder=3.6,
+                    clip_on=False, alpha=0.92)
     return y0
 
 def _table_card_height(headers, rows, fs, T, subtitle=None, zf=1.0):
@@ -836,7 +952,35 @@ def _nice_step(span, target=7):
             return step
     return 20
 
+def _safe_map_label_anchor(ax, text, lon, lat, fontsize, weight="bold", pad_pt=3.0):
+    """Keep a map label's whole bbox inside the map axes.
+
+    Matplotlib anchors text at its centre, so checking only the centroid lets
+    long state names spill beyond the right frame.  Convert the measured
+    glyph size from points to map degrees and clamp the anchor before drawing.
+    """
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    bbox = ax.get_window_extent()
+    if bbox.width <= 0 or bbox.height <= 0:
+        return float(np.clip(lon, x0, x1)), float(np.clip(lat, y0, y1))
+    fig = ax.figure
+    pt_px = fig.dpi / 72.0
+    width_data = (_text_width_pt(text, fontsize, weight) + 2 * pad_pt) * pt_px
+    height_data = (fontsize * 1.55 + 2 * pad_pt) * pt_px
+    half_lon = width_data / bbox.width * (x1 - x0) / 2.0
+    half_lat = height_data / bbox.height * (y1 - y0) / 2.0
+    # If a label is wider than the available map, centre it rather than
+    # allowing one side to escape the frame.
+    safe_x0, safe_x1 = x0 + half_lon, x1 - half_lon
+    safe_y0, safe_y1 = y0 + half_lat, y1 - half_lat
+    safe_lon = (x0 + x1) / 2.0 if safe_x0 > safe_x1 else np.clip(lon, safe_x0, safe_x1)
+    safe_lat = (y0 + y1) / 2.0 if safe_y0 > safe_y1 else np.clip(lat, safe_y0, safe_y1)
+    return float(safe_lon), float(safe_lat)
+
+
 def _draw_states_and_labels(ax, T, bounds, geojson_path, zf=1.0):
+    """Draw readable labels, clamped so no state name exits the map."""
     try:
         with open(geojson_path, encoding="utf-8") as fh:
             data = json.load(fh)
@@ -855,54 +999,29 @@ def _draw_states_and_labels(ax, T, bounds, geojson_path, zf=1.0):
         {"name": "MYANMAR", "lon": 95.95, "lat": 21.91},
         {"name": "BHUTAN", "lon": 90.43, "lat": 27.51},
         {"name": "NEPAL", "lon": 84.12, "lat": 28.39},
-        {"name": "CHINA", "lon": 104.19, "lat": 35.86}
+        {"name": "CHINA", "lon": 104.19, "lat": 35.86},
     ]
 
-    # Zoom out: show country labels with dynamic font
+    # Wider regional views get country names; each one is measured and
+    # shifted inward so the rightmost name cannot be clipped.
     if map_span > 14.0:
         fs_country = dynamic_font(T["fs_tiny"] * 1.5, zf, 8, 14)
         for country in major_countries:
-            lon, lat = country["lon"], country["lat"]
-            name = country["name"]
+            lon, lat, name = country["lon"], country["lat"], country["name"]
             if not (lon_min <= lon <= lon_max and lat_min <= lat <= lat_max):
                 continue
-            ax.text(
-                lon, lat, name,
-                transform=ax.transData,
-                fontsize=fs_country,
-                fontweight="black",
-                color=T["ink"],
-                ha="center", va="center",
-                alpha=0.88,
-                zorder=3.0,
-                bbox=dict(
-                    facecolor=T["paper"],
-                    alpha=0.92,
-                    edgecolor=T["card_edge"],
-                    linewidth=0.8,
-                    boxstyle="round,pad=0.35"
-                )
-            )
+            lon, lat = _safe_map_label_anchor(ax, name, lon, lat, fs_country, "bold", 8.0)
+            ax.text(lon, lat, name, transform=ax.transData, fontsize=fs_country,
+                    fontweight="black", color=T["ink"], ha="center", va="center",
+                    alpha=0.88, zorder=3.0, clip_on=True,
+                    bbox=dict(facecolor=T["paper"], alpha=0.92,
+                              edgecolor=T["card_edge"], linewidth=0.8,
+                              boxstyle="round,pad=0.35"))
         return
 
-    # Zoom in: state borders + labels with dynamic sizing
+    if not getattr(cfg, "SHOW_STATE_LABELS", True):
+        return
     fs_state = dynamic_font(T["fs_tiny"] * 1.05, zf, 7, 11)
-    for feat in data.get("features", ()):
-        geom = feat.get("geometry", {})
-        coords = geom.get("coordinates", [])
-        if coords:
-            lons = [p[0] for p in coords]
-            lats = [p[1] for p in coords]
-            ax.plot(
-                lons, lats,
-                color=T["state_border"],
-                linestyle=":",
-                linewidth=dynamic_linewidth(0.9, zf),
-                alpha=0.75,
-                transform=ax.transData,
-                zorder=1.8
-            )
-
     for feat in data.get("features", ()):
         props = feat.get("properties", {})
         name = props.get("name")
@@ -912,22 +1031,22 @@ def _draw_states_and_labels(ax, T, bounds, geojson_path, zf=1.0):
             continue
         if not (lon_min <= lon <= lon_max and lat_min <= lat <= lat_max):
             continue
-        ax.text(
-            lon, lat, name,
-            transform=ax.transData,
-            fontsize=fs_state,
-            fontweight="600",
-            color=T["ink_faint"],
-            ha="center", va="center",
-            alpha=0.85,
-            zorder=2.2,
-            bbox=dict(
-                facecolor=T["paper"],
-                alpha=0.80,
-                edgecolor="none",
-                boxstyle="round,pad=0.18"
-            )
-        )
+        # Avoid placing state names directly on the coordinate frame.  This
+        # both protects the right edge and stops a long name from colliding
+        # with the inside-anchored latitude ticks.
+        edge_lon = max(0.8, 0.08 * (lon_max - lon_min))
+        edge_lat = max(0.5, 0.08 * (lat_max - lat_min))
+        if (lon < lon_min + edge_lon or lon > lon_max - edge_lon or
+                lat < lat_min + edge_lat or lat > lat_max - edge_lat):
+            continue
+        # Leave a generous inner gutter for the latitude tick labels, which
+        # are intentionally anchored inside the slim mobile map frame.
+        lon, lat = _safe_map_label_anchor(ax, name, lon, lat, fs_state, "bold", 22.0)
+        ax.text(lon, lat, name, transform=ax.transData, fontsize=fs_state,
+                fontweight="bold", color=T["ink_faint"], ha="center", va="center",
+                alpha=0.85, zorder=2.2, clip_on=True,
+                bbox=dict(facecolor=T["paper"], alpha=0.80, edgecolor="none",
+                          boxstyle="round,pad=0.18"))
 
 def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
               track_obs, track_for, cone_pts, smooth, fc_track,
@@ -939,18 +1058,26 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
     basemap.draw_land(ax, T, (lon_min, lon_max, lat_min, lat_max), basemap_path)
     borders_path = str(Path(basemap_path).with_name("borders.geojson"))
     basemap.draw_borders(ax, T, (lon_min, lon_max, lat_min, lat_max), borders_path)
+    # Keep the base coastline black, then add short risk-coded sections that
+    # match each port marker and label.
+    basemap.draw_risk_coastline(
+        ax, T, (lon_min, lon_max, lat_min, lat_max), basemap_path,
+        visible_ports, zf=zf)
 
     if getattr(cfg, "SHOW_STATES", True):
         states_path = str(Path(basemap_path).with_name("states.geojson"))
         basemap.draw_states(ax, T, (lon_min, lon_max, lat_min, lat_max), states_path)
 
-    if getattr(cfg, "SHOW_STATES", True) or getattr(cfg, "SHOW_STATE_LABELS", True):
-        states_path = str(Path(basemap_path).with_name("states.geojson"))
-        _draw_states_and_labels(ax, T, (lon_min, lon_max, lat_min, lat_max), states_path, zf=zf)
-
     ax.set_xlim(lon_min, lon_max)
     ax.set_ylim(lat_min, lat_max)
     ax.set_aspect("equal", adjustable="datalim")
+
+    # Labels are placed only after the final data limits are known.  This is
+    # what lets the measured clamp keep long state names inside the right
+    # edge rather than merely hiding the overflow.
+    if getattr(cfg, "SHOW_STATE_LABELS", True):
+        states_path = str(Path(basemap_path).with_name("states.geojson"))
+        _draw_states_and_labels(ax, T, (lon_min, lon_max, lat_min, lat_max), states_path, zf=zf)
 
     for spine in ax.spines.values():
         spine.set_color(T["map_edge"])
@@ -974,13 +1101,25 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
         ax.set_yticks(np.arange(y_start, y_end + 0.01, ys))
     else:
         ax.set_yticks(np.arange(np.ceil(lat_min / ys) * ys, lat_max, ys))
-    ax.set_xticklabels([f"{v:.0f}°E" for v in ax.get_xticks()], va="bottom", fontweight="bold")
-    ax.set_yticklabels([f"{v:.0f}°N" for v in ax.get_yticks()], ha="left", va="center", fontweight="bold")
+    ax.set_xticklabels([_coordinate_label(v, latitude=False) for v in ax.get_xticks()],
+                       va="bottom", fontweight="bold")
+    ax.set_yticklabels([_coordinate_label(v, latitude=True) for v in ax.get_yticks()],
+                       ha="left", va="center", fontweight="bold")
 
     if show_grid:
-        ax.grid(color=T["grid"], linestyle=(0, (4, 4)), linewidth=dynamic_linewidth(0.9, zf),
-                alpha=0.65, zorder=1)
-    ax.set_axisbelow(True)
+        # Draw explicit graticule lines above the pale land fill.  Relying on
+        # axisbelow alone makes them disappear behind vector polygons in
+        # some Matplotlib versions.
+        grid_lw = dynamic_linewidth(0.75, zf)
+        for tick in ax.get_xticks():
+            ax.axvline(tick, color=T["grid"], linestyle=(0, (3.5, 4.0)),
+                       linewidth=grid_lw, alpha=0.52, zorder=1.15,
+                       clip_on=True)
+        for tick in ax.get_yticks():
+            ax.axhline(tick, color=T["grid"], linestyle=(0, (3.5, 4.0)),
+                       linewidth=grid_lw, alpha=0.52, zorder=1.15,
+                       clip_on=True)
+    ax.set_axisbelow("line")
 
     # ---- wind-radius rings — gorgeous, dynamic ----
     if track_for is not None and len(track_for):
@@ -1101,28 +1240,39 @@ def _draw_map(ax, T, *, lon_min, lon_max, lat_min, lat_max, basemap_path,
                 linestyle="none", zorder=7.2)
 
 def _scale_bar(ax, T, lon_span, lat_mid, zf=1.0):
+    """Draw a small, physically accurate 0–50–100 km scale card."""
     kx = 111.320 * np.cos(np.radians(lat_mid))
-    best = None
-    for total in (50, 100, 150, 200, 300, 400, 600, 800, 1200):
-        frac = (total / kx) / lon_span
-        if 0.10 <= frac <= 0.28:
-            best = total
-            break
-    if best is None:
-        best = 200
+    best = 100
+    # Keep the requested 100 km reference whenever it remains readable.  On
+    # a very tight crop use a smaller label; on a world-scale crop use the
+    # next clean value rather than letting the bar become a hairline.
+    fraction = (best / kx) / max(lon_span, 0.01)
+    if fraction < 0.035:
+        for candidate in (50, 75, 100):
+            if (candidate / kx) / max(lon_span, 0.01) >= 0.035:
+                best = candidate
+                break
+    elif fraction > 0.115:
+        for candidate in (75, 50, 25):
+            if (candidate / kx) / max(lon_span, 0.01) <= 0.115:
+                best = candidate
+                break
+
     fig = ax.figure
     pt2px = fig.dpi / 72.0
     aw_pt, ah_pt = _ax_pt(ax)
-    fs = dynamic_font(T["fs_tiny"] + 2.6, zf, 8, 13)
-    bar_w = 0.14 * aw_pt * (0.9 + 0.15*zf)
-    bar_h = 5.0
-    km_w = _text_width_pt("KM", fs, "bold")
-    box_w = 10 + bar_w + 8 + km_w + 10
-    box_h = 8 + fs * 1.2 + 3 + bar_h + 3 + fs * 1.2 + 8
+    fs = dynamic_font(T["fs_tiny"] + 1.8, zf, 7.5, 11)
+    # Calculate width from the labelled distance, not from a decorative
+    # fixed fraction.  The ticks therefore remain truthful at every crop.
+    bar_w_pt = (best / kx) / max(lon_span, 0.01) * aw_pt
+    bar_w_pt = max(34.0, bar_w_pt)
+    bar_h_pt = 3.5
+    box_w = bar_w_pt + 30.0
+    box_h = 38.0
 
     ax_bb = ax.get_window_extent(fig.canvas.get_renderer())
-    x1_px = ax_bb.x1 - 8 * pt2px
-    y0_px = ax_bb.y0 + 14 * pt2px
+    x1_px = ax_bb.x1 - 7 * pt2px
+    y0_px = ax_bb.y0 + 12 * pt2px
     x0_px = x1_px - box_w * pt2px
     y1_px = y0_px + box_h * pt2px
 
@@ -1131,27 +1281,30 @@ def _scale_bar(ax, T, lon_span, lat_mid, zf=1.0):
 
     bx0, by0 = to_ax(x0_px, y0_px)
     bx1, by1 = to_ax(x1_px, y1_px)
+    card = add_rrect(ax, bx0, by0, bx1, by1, 5.0, fc="#ffffff",
+                     ec=T["card_edge"], lw=0.9, alpha=0.97, z=8, T=T,
+                     shadow=True)
+    card.set_gid("map-scale-card")
 
-    # Modern card for scale bar
-    add_rrect(ax, bx0, by0, bx1, by1, 6.0, fc="#ffffff", ec=T["card_edge"],
-              lw=1.0, alpha=0.96, z=8, T=T, shadow=True)
-
-    bar_y = by0 + (8 + fs * 1.2 + 3) / ah_pt
-    sx = bx0 + 10 / aw_pt
-    seg = (bar_w / 2) / aw_pt
-    ax.add_patch(Rectangle((sx, bar_y), seg, bar_h / ah_pt,
-                           transform=ax.transAxes, facecolor=T["ink"],
-                           edgecolor=T["ink"], linewidth=0.6, zorder=9,
-                           clip_on=False))
-    ax.add_patch(Rectangle((sx + seg, bar_y), seg, bar_h / ah_pt,
-                           transform=ax.transAxes, facecolor="#ffffff",
-                           edgecolor=T["ink"], linewidth=0.6, zorder=9,
-                           clip_on=False))
-    ax.text(sx + (bar_w / 2) / aw_pt, bar_y + bar_h / ah_pt + 6 / ah_pt, "KM",
-            transform=ax.transAxes, fontsize=fs, fontweight="bold",
-            color=T["ink_faint"], ha="center", va="bottom", zorder=9)
-    for frac_, txt in ((0.0, "0"), (0.5, f"{best // 2}"), (1.0, f"{best}")):
-        ax.text(sx + (bar_w * frac_) / aw_pt, bar_y - 3 / ah_pt, txt,
+    bar_w = bar_w_pt / aw_pt
+    bar_h = bar_h_pt / ah_pt
+    sx = bx0 + 15.0 / aw_pt
+    bar_y = by0 + 12.0 / ah_pt
+    first = Rectangle((sx, bar_y), bar_w / 2, bar_h,
+                      transform=ax.transAxes, facecolor=T["ink"],
+                      edgecolor=T["ink"], linewidth=0.55, zorder=9, clip_on=False)
+    second = Rectangle((sx + bar_w / 2, bar_y), bar_w / 2, bar_h,
+                       transform=ax.transAxes, facecolor="#ffffff",
+                       edgecolor=T["ink"], linewidth=0.55, zorder=9, clip_on=False)
+    first.set_gid("map-scale-segment-0")
+    second.set_gid("map-scale-segment-1")
+    ax.add_patch(first)
+    ax.add_patch(second)
+    ax.text(sx + bar_w, by1 - 7.0 / ah_pt, "KM", transform=ax.transAxes,
+            fontsize=fs * 0.72, fontweight="bold", color=T["ink_faint"],
+            ha="right", va="top", zorder=9)
+    for fraction_, label in ((0.0, "0"), (0.5, f"{best // 2}"), (1.0, f"{best}")):
+        ax.text(sx + bar_w * fraction_, bar_y - 3.0 / ah_pt, label,
                 transform=ax.transAxes, fontsize=fs, fontweight="bold",
                 color=T["ink_soft"], ha="center", va="top", zorder=9)
     return (x0_px, y0_px, x1_px, y1_px)
@@ -1177,21 +1330,9 @@ def _north_arrow(ax, T, zf=1.0):
             fontweight="black", color=T["ink"], ha="center", va="bottom",
             zorder=9)
 
-    # Coastline & Border legend — modern, higher, no overlap with ticks
-    fs_bl = dynamic_font(T["fs_tiny"] + 1.4, zf, 8, 12)
-    ax.plot([0.030, 0.080], [0.125, 0.125], transform=ax.transAxes,
-            color=T["coast"], lw=dynamic_linewidth(2.4, zf), zorder=9, clip_on=False,
-            solid_capstyle="round")
-    ax.text(0.090, 0.125, "Coastline", transform=ax.transAxes,
-            fontsize=fs_bl, fontweight="bold", color=T["ink_soft"],
-            ha="left", va="center", zorder=9)
-    ax.plot([0.030, 0.080], [0.090, 0.090], transform=ax.transAxes,
-            color=T["border"], lw=dynamic_linewidth(1.9, zf),
-            linestyle=(0, (3.4, 2.4)), zorder=9, clip_on=False, solid_capstyle="round")
-    ax.text(0.090, 0.090, "Country Border", transform=ax.transAxes,
-            fontsize=fs_bl, fontweight="bold", color=T["ink_soft"],
-            ha="left", va="center", zorder=9)
-
+    # Keep the map free of a second coastline/border text legend.  The
+    # coastline itself is rendered on the basemap and risk-coded beside the
+    # port markers; the sidebar MAP KEY remains the single explanation.
     return (x_px - 14 * pt2px, y_px - 18 * pt2px,
             x_px + 14 * pt2px, y_px + fs * 1.5 * pt2px)
 
@@ -1291,13 +1432,22 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                                  tz_offset_hours=cfg.FORECAST_TZ_OFFSET),
             cfg.FORECAST_TABLE_MAX_COLS)
 
+    # Once the forecast passes the estimated crossing, the strip above the
+    # table reports the clear status OverLand instead of an ambiguous
+    # "Unknown · no landfall" risk item.
+    overland = bool(
+        cfg.SHOW_LANDFALL and landfall_info is not None and has_for and
+        any(pd.Timestamp(t) >= pd.Timestamp(landfall_info["time"]) for t in fc["tnd"])
+    )
     key_items = []
     if cfg.SHOW_FORECAST_KEY:
         if cfg.SHOW_CONE and has_for and len(fc) >= 2:
             key_items.append(("cone", T["cone_fill"], "Uncertainty Cone"))
         if fc_track is not None:
             key_items.append(("line", T["accent"], "Forecast Track"))
-        if cfg.SHOW_LANDFALL and landfall_info is not None:
+        if overland:
+            key_items.append(("status", T["overland"], "OverLand"))
+        elif cfg.SHOW_LANDFALL and landfall_info is not None:
             key_items.append(("x", T["landfall"], "Landfall Est."))
 
     key_rows = []
@@ -1327,9 +1477,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 key_rows.append(("item", "dot",
                                  PORT_RISK.get(band["key"], band["color"]),
                                  f"{band['label'].title()}"))
-            if landfall_info is None:
-                key_rows.append(("item", "dot", PORT_RISK["unknown"],
-                                 "Unknown · no landfall"))
 
     # stats
     stats = []
@@ -1348,13 +1495,15 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     else:
         stats.append(("MAX FORECAST", "--", "", T["ink_faint"]))
     if cfg.SHOW_MOVEMENT_TABLE and obs_dir is not None:
-        stats.append(("MOVING (KM)", f"{obs_dir} {int(obs_speed)}", "km/h", T["ink"]))
+        # Keep the summary compact: the unit is not repeated as a tiny line
+        # underneath the value on a mobile-sized export.
+        stats.append(("MOVING", f"{obs_dir} {int(obs_speed)}", "", T["ink"]))
     else:
-        stats.append(("MOVING (KM)", "--", "", T["ink_faint"]))
+        stats.append(("MOVING", "--", "", T["ink_faint"]))
     if cfg.SHOW_MOVEMENT_TABLE and for_dir is not None:
-        stats.append(("NEXT 12HRS", f"{for_dir} {int(for_speed)}", f"km/h · {time_label}", T["ink"]))
+        stats.append(("NEXT 24HRS", f"{for_dir} {int(for_speed)}", "", T["ink"]))
     else:
-        stats.append(("NEXT 12HRS", "--", "", T["ink_faint"]))
+        stats.append(("NEXT 24HRS", "--", "", T["ink_faint"]))
     if cfg.SHOW_LANDFALL and landfall_info is not None:
         stats.append(("LANDFALL EST.", landfall_info["time_str"],
                       landfall_info.get("place") or "coast crossing", T["landfall"]))
@@ -1380,7 +1529,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     # ---------------- layout — SUPER DYNAMIC, MOBILE-FIRST -------------------------------
     has_side = bool(key_rows) or bool(stats) or bool(port_rows)
     has_band = bool(key_items) or bool(steps)
-    m_l, m_r = 0.048, 0.020  # left larger for °N labels, prevents clipping
+    # Tick labels are anchored inside the map frame, so a slim left gutter
+    # keeps the graphic balanced on narrow/mobile exports without clipping.
+    m_l, m_r = 0.006, 0.020
     m_t = m_b = 0.016
     header_h = 0.115
     footer_h = 0.054 if cfg.SHOW_FOOTER else 0.0
@@ -1413,7 +1564,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
 
     band_h_pt = _band_height_pt(bool(key_items), bool(steps), T, zf=zf)
     band_h = band_h_pt / (FIG_H_IN * 72.0) if has_band else 0.0
-    side_w = 0.285 if has_side else 0.0
+    side_w = 0.320 if has_side else 0.0
 
     foot_top = m_b + footer_h + (0.008 if footer_h else 0.0)
     map_y1 = 1.0 - m_t - header_h - gap
@@ -1448,13 +1599,7 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
     meta["lat_span"] = lat_max - lat_min
 
     # ---------------- paint zones -------------------------------------------
-    tz = pd.Timedelta(hours=cfg.FORECAST_TZ_OFFSET)
-    issued_local = (ci_tnd + tz) if ci_tnd is not None else None
-    local_str = ""
-    if issued_local is not None:
-        hr_12 = issued_local.strftime("%I").lstrip("0")
-        ampm = issued_local.strftime("%p")
-        local_str = f"LOCAL {hr_12}{ampm}, {issued_local:%d %b %Y}".upper()
+    issued_line, local_line = _format_issue_times(ci_tnd, cfg.FORECAST_TZ_OFFSET)
 
     _draw_header(
         ax_head, T, name=str(cyclone_name), is_invest=is_invest,
@@ -1462,9 +1607,9 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                   f"{obs['tnd'].iloc[-1]:%d/%HZ}") if has_obs else "OBSERVED --",
         for_span=(f"FORECAST {fc['tnd'].iloc[0]:%d/%HZ} – "
                   f"{fc['tnd'].iloc[-1]:%d/%HZ}") if has_for else "FORECAST --",
-        issued=(f"ISSUED {ci_tnd:%HZ, %d %b %Y}".upper() if ci_tnd is not None else "ISSUED --"),
-        issued_sub=(local_str if local_str else "SYNOPTIC CHART"),
-        brand=cfg.BRAND_NAME, zf=zf)
+        issued=issued_line,
+        issued_sub=(local_line if ci_tnd is not None else "SYNOPTIC CHART"),
+        brand=cfg.BRAND_NAME, logo_path=getattr(cfg, "BRAND_LOGO", ""), zf=zf)
 
     if ax_foot is not None:
         p_txt = "--" if pressure is None or pd.isna(pressure) else int(pressure)
@@ -1489,12 +1634,15 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
         if key_rows:
             cards.append(("key", key_rows))
         if port_rows:
-            cards.append(("table", ("NEAREST PORTS",
+            cards.append(("table", (f"NEAREST {len(port_rows)} PORTS",
                                     ["PORT", "DIST (KM)", "DIRECTION"],
                                     port_rows, port_dots,
                                     "centre distance & bearing from port")))
         _aw, ah_pt = _ax_pt(ax_side)
-        fs_mult = {"glance": 1.22, "key": 1.05, "table": 0.92}  # more compact for mobile fit
+        # Give the key a readable floor while compacting the value-dense
+        # summary/table cards.  This keeps MAP KEY legible even in a 10-inch
+        # export and leaves all cards inside the sidebar.
+        fs_mult = {"glance": 0.90, "key": 1.10, "table": 0.70}
         gaps = (len(cards) - 1) * T["card_gap"]
         def total_at(fs):
             tot = 0.0
@@ -1647,21 +1795,6 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                    prev_lon, prev_lat, fs_chip * 0.92, T["accent"], T["ink"],
                    CANDIDATES, lw=1.6, priority=10)
 
-    # 2) forecast chips — priority by wind intensity
-    if has_for:
-        # sort by wind descending for priority
-        fc_indices = sorted(range(len(fc)), key=lambda i: float(fc["Intensity"].iloc[i]), reverse=True)
-        for idx in fc_indices:
-            i = idx
-            lat = float(fc["Latitude"].iloc[i])
-            lon = float(fc["Longitude"].iloc[i])
-            wind = fc["Intensity"].iloc[i]
-            # dynamic font slightly smaller for weaker systems
-            f_scale = 0.88 if float(wind) < 35 else 0.94
-            place_chip(f"{fc['tnd'].iloc[i]:%d/%HZ} · {int(wind)}KT",
-                       lon, lat, fs_chip * f_scale, wind_color(wind), T["ink"],
-                       CANDIDATES, lw=1.5, priority=float(wind)/10.0)
-
     # 3) landfall chip
     if getattr(cfg, "SHOW_LANDFALL_LABEL", False) and cfg.SHOW_LANDFALL and landfall_info is not None:
         txt = f"LANDFALL {landfall_info['time_str']}"
@@ -1670,7 +1803,10 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                    CANDIDATES, lw=1.9, alpha=0.98, priority=9)
 
     # 4) port chips — only when not too crowded, dynamic
-    port_span_threshold = 11.0 if zf < 1.0 else 16.0
+    # The map is intentionally wider after the regional-coverage update;
+    # still keep a small, selected set of port labels visible beside their
+    # risk markers instead of hiding all labels at the first zoom-out step.
+    port_span_threshold = 24.0 if zf < 1.0 else 30.0
     if cfg.SHOW_PORTS and (lon_span <= port_span_threshold):
         # only show nearest ports to avoid clutter, already filtered by visible_ports
         # sort by distance to current centre for priority
@@ -1724,6 +1860,22 @@ def plot_cyclone(cyclone_name, track_data_obs, track_data_for, is_invest,
                 bbox=dict(facecolor="#ffffff", alpha=0.94,
                           edgecolor=band["color"], linewidth=1.2,
                           boxstyle="round,pad=0.24"))
+
+
+    # 2) forecast chips — priority by wind intensity
+    if has_for:
+        # sort by wind descending for priority
+        fc_indices = sorted(range(len(fc)), key=lambda i: float(fc["Intensity"].iloc[i]), reverse=True)
+        for idx in fc_indices:
+            i = idx
+            lat = float(fc["Latitude"].iloc[i])
+            lon = float(fc["Longitude"].iloc[i])
+            wind = fc["Intensity"].iloc[i]
+            # dynamic font slightly smaller for weaker systems
+            f_scale = 0.88 if float(wind) < 35 else 0.94
+            place_chip(f"{fc['tnd'].iloc[i]:%d/%HZ} · {int(wind)}KT",
+                       lon, lat, fs_chip * f_scale, wind_color(wind), T["ink"],
+                       CANDIDATES, lw=1.5, priority=float(wind)/10.0)
 
     # ---- inset mini-map when tightly zoomed — modern, clean ----
     try:

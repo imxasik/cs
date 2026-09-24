@@ -336,7 +336,7 @@ PORT_RISK_BANDS = (
         "key": "high",
         "label": "HIGH RISK",
         "legend": "0–100 km",
-        "color": "#ff00ff",       # Magenta (0-100 km)
+        "color": "#d100ff",       # vivid magenta (0-100 km)
         "min_km": 0.0,
         "max_km": 100.0,
     },
@@ -344,7 +344,7 @@ PORT_RISK_BANDS = (
         "key": "medium",
         "label": "MEDIUM RISK",
         "legend": "100–300 km",
-        "color": "#e60000",       # Red (100-300 km)
+        "color": "#f59e0b",       # amber (100-300 km)
         "min_km": 100.0,
         "max_km": 300.0,
     },
@@ -352,7 +352,7 @@ PORT_RISK_BANDS = (
         "key": "low",
         "label": "LOW RISK",
         "legend": "300–500 km",
-        "color": "#ff9500",       # Orange (300-500 km)
+        "color": "#2563eb",       # blue (300-500 km)
         "min_km": 300.0,
         "max_km": 500.0,
     },
@@ -360,7 +360,7 @@ PORT_RISK_BANDS = (
         "key": "norisk",
         "label": "NO RISK",
         "legend": ">500 km",
-        "color": "#22b957",       # Green (>500 km)
+        "color": "#16a34a",       # green (>500 km)
         "min_km": 500.0,
         "max_km": float("inf"),
     },
@@ -379,7 +379,7 @@ def classify_port_risk(distance_km):
             "key": "unknown",
             "label": "UNKNOWN",
             "legend": "No landfall",
-            "color": "#9e9e9e",
+            "color": "#64748b",
             "distance_km": None,
         }
 

@@ -17,9 +17,9 @@ What it does
    byte-count, dateline flag) and the little-endian float32 (lon, lat)
    pairs it points at,
 2. keeps level-1 (land) polygons whose bounding box touches the project
-   map area (lon 55..125 E, lat -25..45 N),
-3. simplifies them radially (0.008 deg ~ half a pixel at every zoom this
-   project uses) and rounds to 5 decimals,
+   map area (lon 20..130 E, lat -25..45 N),
+3. simplifies them radially (area-aware 0.018–0.045° so dense deltas stay
+   clean at report scale) and rounds to 5 decimals,
 4. writes a small GeoJSON FeatureCollection that cyclone/basemap.py draws
    as crisp vector land at any DPI.
 
@@ -41,8 +41,8 @@ try:
 except ImportError:
     raise SystemExit("pip install basemap-data-hires first")
 
-REGION = (55.0, 125.0, -25.0, 45.0)      # lon_min, lon_max, lat_min, lat_max
-TOL = 0.008                              # radial simplification, degrees
+REGION = (20.0, 130.0, -25.0, 45.0)      # lon_min, lon_max, lat_min, lat_max
+TOL = 0.030                              # fallback radial simplification, degrees
 MIN_SPAN = 0.05                          # drop islets smaller than this (deg)
 MIN_AREA = 10.0                            # drop islets smaller than this (km2)
 OUT = Path(__file__).resolve().parent.parent / "assets" / "geo" / "land.geojson"
@@ -80,10 +80,12 @@ def tol_for(area_km2):
     """Coarser simplification for continent-scale polygons: at the zooms
     this project uses their extra detail is sub-pixel anyway."""
     if area_km2 < 2000:
-        return 0.006
+        return 0.018
     if area_km2 < 50000:
-        return 0.010
-    return 0.016
+        return 0.030
+    # The regional map is designed for a clean report at roughly 1:10m–
+    # 1:25m scale; sub-pixel shoreline noise makes dense deltas look black.
+    return 0.045
 
 
 def simplify(pts, tol):

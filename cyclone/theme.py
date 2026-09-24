@@ -24,7 +24,7 @@ INTENSITY_SCALE = (
     (84,  "cat2", "Category 2", "#f59e0b"),   # amber-500
     (65,  "cat1", "Category 1", "#facc15"),   # yellow-400 (darker border)
     (35,  "ts",   "Cyclonic Storm", "#06b6d4"), # cyan-500
-    (24,  "td",   "Depression", "#3b82f6"),   # blue-500
+    (24,  "td",   "Tropical Depression", "#3b82f6"),   # blue-500
     (0,   "low",  "Invest Area", "#22c55e"),  # green-500
 )
 
@@ -35,12 +35,15 @@ WIND_RADII = (
     ("WindR64", "64 KT Wind", "#e11d48"),  # rose-600
 )
 
+# Risk colours are intentionally far apart in hue and luminance.  High risk
+# is the requested vivid magenta; medium is amber/orange rather than red so
+# the two bands remain instantly distinguishable on both paper and phones.
 PORT_RISK = {
-    "high":    "#ec4899",   # pink-500 — high risk, immediate attention
-    "medium":  "#ef4444",   # red-500
-    "low":     "#f59e0b",   # amber-500
-    "norisk":  "#10b981",   # emerald-500
-    "unknown": "#94a3b8",   # slate-400
+    "high":    "#d100ff",   # vivid magenta — immediate attention
+    "medium":  "#f59e0b",   # amber — clearly distinct from magenta
+    "low":     "#2563eb",   # blue — lower, but still visible
+    "norisk":  "#16a34a",   # green — no immediate port risk
+    "unknown": "#64748b",   # slate — only for unavailable estimates
 }
 
 # ---------------------------------------------------------------------------
@@ -67,16 +70,16 @@ MODERN = {
     "navy":          "#0f172a",   # header, footer, label column
     "accent":        "#e11d48",   # rose-600 — forecast track, accent
     "accent_soft":   "#ffe4e6",   # rose-100
-    "grid":          "#cbd5e1",   # slate-300 — graticule (soft)
-    "map_edge":      "#94a3b8",   # slate-400 — map frame
+    "grid":          "#94a3b8",   # slate-400 — visible, restrained graticule
+    "map_edge":      "#64748b",   # slate-500 — map frame
 
     # ---- basemap ----------------------------------------------------------
     "sea":           "#e0f2fe",   # sky-100 — modern light ocean
     "land":          "#fefce8",   # yellow-50 — warm paper land
-    "coast":         "#7dd3fc",   # sky-300 — coastline
-    "coast_halo":    "#bae6fd",   # sky-200 — shallow water glow
-    "border":        "#94a3b8",   # slate-400 — country border
-    "state_border":  "#cbd5e1",   # slate-300 — state border (lighter)
+    "coast":         "#111827",   # near-black — crisp primary coastline
+    "coast_halo":    "#bfdbfe",   # blue-200 — restrained water halo
+    "border":        "#64748b",   # slate-500 — country border
+    "state_border":  "#94a3b8",   # slate-400 — state border (lighter)
     "state_width":   0.6,
     "state_style":   ":",
 
@@ -85,6 +88,8 @@ MODERN = {
     "cone_fill":     "#94a3b8",   # slate-400
     "cone_edge":     "#475569",   # slate-600
     "landfall":      "#dc2626",   # red-600
+    "overland":      "#7c3aed",   # violet — status chip above forecast table
+    "summary_line":  "#b8c4d3",   # clearly visible summary dividers
 
     # ---- type scale — MOBILE FIRST, large & bold -------------------------
     # These are base sizes; dynamic zoom will scale them further
@@ -120,9 +125,9 @@ OFFICIAL.update({
     "page_bg": "#eef2f7",
     "sea": "#d3e5f2",
     "land": "#eceadb",
-    "coast": "#87a0b4",
-    "coast_halo": "#b7d3e6",
-    "border": "#8f889c",
+    "coast": "#111827",
+    "coast_halo": "#bfdbfe",
+    "border": "#64748b",
     "accent": "#c2255c",
 })
 

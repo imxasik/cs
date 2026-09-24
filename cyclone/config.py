@@ -5,10 +5,10 @@ from pathlib import Path
 FLOAT_DEFAULTS = {
     "buffer": 2.0,
     "ucr": 0.20,
-    "min_lat": -4.0,
-    "max_lat": 31.0,
-    "min_lon": 73.2,
-    "max_lon": 107.0,
+    "min_lat": -25.0,
+    "max_lat": 45.0,
+    "min_lon": 20.0,
+    "max_lon": 130.0,
     "minlat_offset": -0.0,
     "maxlat_offset": -0.5,
     "output_dpi": 300.0,
@@ -51,6 +51,7 @@ BOOL_DEFAULTS = {
 STYLE_DEFAULTS = {
     "theme": "official",                # design tokens: cyclone/theme.py
     "brand_name": "XP WEATHER",         # header brand chip (left corner)
+    "brand_logo": "",                    # optional project-relative logo path
     "date_format": "%HZ, %d %b %Y",      # title date format (strftime)
     "footer_text": "\u00a9 XP WEATHER",  # right-hand footer on the map
     "forecast_time_label": "TIME (BST)",   # first cell of the forecast table
@@ -153,6 +154,7 @@ SHOW_SCALE_BAR = _BOOLS["show_scale_bar"]
 
 THEME = _STYLE["theme"]
 BRAND_NAME = _STYLE["brand_name"]
+BRAND_LOGO = _STYLE["brand_logo"]
 DATE_FORMAT = _STYLE["date_format"]
 FOOTER_TEXT = _STYLE["footer_text"]
 FORECAST_TIME_LABEL = _STYLE["forecast_time_label"]
